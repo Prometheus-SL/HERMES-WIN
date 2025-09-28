@@ -57,18 +57,29 @@ fn run_console() -> anyhow::Result<()> {
         let _ = shutdown_tx.send(());
     })?;
 
-    // Run the agent
-    let agent_task = tokio::spawn(async move {
-        if let Err(e) = agent.run().await {
-            error!("Agent error: {}", e);
-        }
-    });
+    // Create Tokio runtime and run the agent
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        // Run the agent
+        let agent_task = tokio::spawn(async move {
+            if let Err(e) = agent.run().await {
+                error!("Agent error: {}", e);
+            }
+        });
 
-    // Wait for shutdown signal
-    let _ = shutdown_rx.recv();
-    info!("Shutting down...");
+        // Wait for shutdown signal
+        let shutdown_rx_clone = shutdown_rx;
+        tokio::task::spawn_blocking(move || {
+            let _ = shutdown_rx_clone.recv();
+        })
+        .await?;
 
-    agent_task.abort();
+        info!("Shutting down...");
+        agent_task.abort();
+
+        Ok::<(), anyhow::Error>(())
+    })?;
+
     Ok(())
 }
 
