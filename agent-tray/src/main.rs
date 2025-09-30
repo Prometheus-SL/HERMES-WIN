@@ -8,7 +8,10 @@ use tracing::{error, info};
 
 fn main() -> anyhow::Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .try_init()
+        .unwrap_or_else(|_| {}); // Ignore if already initialized
 
     info!("Starting HERMES agent system tray");
 

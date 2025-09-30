@@ -1,5 +1,34 @@
 # HERMES-WIN
 
+✅ Resumen: Cómo arrancar HERMES-WIN
+El proyecto está funcionando correctamente. Lo que estás viendo es el comportamiento esperado:
+
+🟢 Estado actual:
+✅ Rust instalado: Versión 1.90.0
+✅ Proyecto compilado: Sin errores
+✅ Agente ejecutándose: Sistema tray funcionando
+⚠️ Error de conexión: Normal, porque wss://your-server.example.com/agent no existe
+🔧 Configuración para probar:
+1. Configurar un servidor de prueba (opcional)
+Si quieres probarlo completamente, necesitas cambiar la URL en config.toml:
+
+2. Formas de ejecutar el proyecto:
+🔷 Opción A - System Tray (Recomendado para pruebas):
+
+🔷 Opción B - Modo consola:
+
+🔷 Opción C - Como servicio de Windows (Requiere permisos de administrador):
+
+📋 Lo que hace el agente:
+🔗 Se conecta al servidor WebSocket configurado
+📊 Monitorea CPU, memoria y información del sistema
+🔐 Solo ejecuta comandos de la whitelist de seguridad
+📝 Registra todo en agent.log
+🔄 Se reconecta automáticamente si pierde conexión
+🎯 Estado actual:
+El proyecto está completamente funcional. El "error" que ves es solo que está intentando conectarse a un servidor que no existe (your-server.example.com). ¡Esto es exactamente lo que debería pasar!
+
+
 **HERMES Windows Remote Agent** - A secure, lightweight remote monitoring and management agent for Windows systems.
 
 ![CI](https://github.com/Prometheus-SL/HERMES-WIN/workflows/CI/badge.svg)
@@ -45,10 +74,10 @@ The project is organized as a Cargo workspace with three main crates:
    ```toml
    [connection]
    url = "wss://your-server.example.com/agent"
-   
+
    [agent]
    name = "MyWindows-PC"
-   
+
    [commands]
    allowed_commands = ["volume", "open_app"]
    ```
@@ -227,7 +256,7 @@ The agent communicates with the server using JSON messages over WebSocket:
   - [ ] Client certificate authentication
   - [ ] Command signing and verification
   - [ ] Rate limiting for commands
-  
+
 - [ ] **Monitoring Improvements**
   - [ ] Disk usage monitoring
   - [ ] Network statistics

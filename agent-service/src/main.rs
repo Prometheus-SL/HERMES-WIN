@@ -5,11 +5,15 @@
 use agent_core::Agent;
 use std::env;
 use std::sync::mpsc;
-use tracing::{error, info, warn};
+use std::time::Duration;
+use tracing::{error, info};
 
 fn main() -> anyhow::Result<()> {
     // Initialize basic logging for the service
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .try_init()
+        .unwrap_or_else(|_| {}); // Ignore if already initialized
 
     let args: Vec<String> = env::args().collect();
 

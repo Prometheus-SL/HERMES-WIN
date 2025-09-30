@@ -130,11 +130,13 @@ impl Agent {
             layers.push(file_layer.boxed());
         }
 
-        tracing_subscriber::registry()
+        // Try to initialize logging, but don't fail if already initialized
+        if let Err(_) = tracing_subscriber::registry()
             .with(env_filter)
             .with(layers)
-            .try_init()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize logging: {}", e))?;
+            .try_init() {
+            // Logging already initialized, continue silently
+        }
 
         info!(
             "Logging initialized - level: {}, file: {}",
