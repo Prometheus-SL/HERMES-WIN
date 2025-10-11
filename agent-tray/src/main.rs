@@ -13,6 +13,8 @@ fn main() -> anyhow::Result<()> {
         .try_init()
         .unwrap_or_else(|_| {}); // Ignore if already initialized
 
+    // rustls provider is installed in agent-core::Agent::new
+
     info!("Starting HERMES agent system tray");
 
     // For now, run as a simple console application since cross-platform tray is complex

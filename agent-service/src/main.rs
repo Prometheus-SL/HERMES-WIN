@@ -15,6 +15,8 @@ fn main() -> anyhow::Result<()> {
         .try_init()
         .unwrap_or_else(|_| {}); // Ignore if already initialized
 
+    // rustls provider is installed in agent-core::Agent::new
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() > 1 {

@@ -20,6 +20,9 @@ pub struct Agent {
 impl Agent {
     /// Create a new agent with the given configuration
     pub fn new(config: Config) -> Self {
+        // Ensure a rustls crypto provider is installed (ring). Ignore error if already set.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         info!("Initializing HERMES agent");
         debug!("Agent configuration: {:?}", config);
 
