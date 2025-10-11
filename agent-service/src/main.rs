@@ -156,14 +156,6 @@ windows_service::define_windows_service!(ffi_service_main, service_main);
 
 #[cfg(windows)]
 fn service_main(_arguments: Vec<std::ffi::OsString>) {
-    use windows_service::{
-        service::{
-            ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
-            ServiceType,
-        },
-        service_control_handler::{self, ServiceControlHandlerResult},
-    };
-
     if let Err(e) = run_service() {
         error!("Service error: {}", e);
     }

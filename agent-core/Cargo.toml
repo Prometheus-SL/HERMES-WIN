@@ -20,3 +20,4 @@ uuid = { workspace = true }
 rustls = { workspace = true }
 rust_socketio = { workspace = true }
 url = { workspace = true }
+windows = { workspace = true }

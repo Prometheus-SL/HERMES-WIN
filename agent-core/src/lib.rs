@@ -8,6 +8,7 @@ pub mod commands;
 pub mod config;
 pub mod system;
 pub mod websocket;
+pub mod media;
 
 pub use agent::Agent;
 pub use config::Config;

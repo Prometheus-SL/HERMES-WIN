@@ -21,6 +21,14 @@ uuid = { version = "1.10", features = ["v4"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rust_socketio = { version = "0.6", features = ["async"] }
 url = "2.5"
+windows = { version = "0.58", features = [
+    "Foundation",
+    "Media",
+    "Media_Control",
+    "Storage_Streams",
+    "UI_ApplicationSettings",
+    "System",
+] }
 
 [profile.release]
 opt-level = 3

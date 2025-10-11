@@ -9,7 +9,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::commands::{CommandResponse, IncomingCommand};
 use crate::config::ConnectionConfig;
-use crate::system::{CpuUpdateMessage, RegistrationMessage};
+use crate::media::MediaMonitor;
+use crate::system::RegistrationMessage;
 
 use rust_socketio::asynchronous::{Client, ClientBuilder};
 use rust_socketio::{Payload, TransportType};
@@ -66,21 +67,23 @@ impl WebSocketClient {
         F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
         G: FnMut() -> f32 + Send + Sync,
     {
+        let _ = get_cpu_usage;
         info!("Connecting to Socket.IO server: {}", self.config.url);
 
         // Normalizar URL: Socket.IO espera http(s) o ws(s); permitimos wss/ws/http/https
 
         // Construir cliente asíncrono con callbacks
         let mut system_monitor = crate::system::SystemMonitor::new();
+        let media_monitor = MediaMonitor::new();
         let system_info = system_monitor.get_system_info();
         let agent_id = system_info.agent_id.clone();
 
-    // Canal para delegar ejecución de comandos fuera del callback
-    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<IncomingCommand>();
+        // Canal para delegar ejecución de comandos fuera del callback
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<IncomingCommand>();
 
         // Callback de comandos: parsea y envía al canal
         let on_command_sender = cmd_tx.clone();
-    let on_command_cb = move |payload: Payload, _client: Client| {
+        let on_command_cb = move |payload: Payload, _client: Client| {
             // Clonar el sender ANTES del async move para que el future no capture el original
             let sender = on_command_sender.clone();
             async move {
@@ -117,11 +120,12 @@ impl WebSocketClient {
         let (address, namespace) = self.socketio_address_and_namespace(&self.config.url)?;
 
         // Preparar registro para emitirlo al abrir conexión
-        let registration_value = serde_json::to_value(&RegistrationMessage::new(system_info.clone()))
-            .map_err(|e| anyhow::anyhow!("Failed to serialize registration message: {}", e))?;
+        let registration_value =
+            serde_json::to_value(&RegistrationMessage::new(system_info.clone()))
+                .map_err(|e| anyhow::anyhow!("Failed to serialize registration message: {}", e))?;
         let reg_agent_id = agent_id.clone();
 
-    let mut builder = ClientBuilder::new(address)
+        let mut builder = ClientBuilder::new(address)
             // Namespace por defecto "/"; si tu server usa "/agent" puedes cambiarlo aquí
             .on("open", move |_p, client| {
                 let registration_value = registration_value.clone();
@@ -133,16 +137,26 @@ impl WebSocketClient {
                     } else {
                         info!("Registration event emitted for agent: {}", reg_agent_id);
                     }
-                }.boxed()
+                }
+                .boxed()
             })
-            .on("close", |_p, _| async { info!("Socket.IO close"); }.boxed())
-            .on("error", |err, _| async move { error!("Socket.IO error: {:?}", err); }.boxed())
+            .on("close", |_p, _| {
+                async {
+                    info!("Socket.IO close");
+                }
+                .boxed()
+            })
+            .on("error", |err, _| {
+                async move {
+                    error!("Socket.IO error: {:?}", err);
+                }
+                .boxed()
+            })
             .on("command", on_command_cb.clone())
             .transport_type(TransportType::Websocket)
             .reconnect(true)
             .reconnect_on_disconnect(true)
-            .reconnect_delay(reconnect_min, reconnect_max)
-            ;
+            .reconnect_delay(reconnect_min, reconnect_max);
 
         if let Some(ns) = namespace {
             builder = builder.namespace(ns);
@@ -154,13 +168,18 @@ impl WebSocketClient {
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("Invalid namespace") {
-                    warn!("Invalid namespace detectado, reintentando con namespace por defecto '/'");
+                    warn!(
+                        "Invalid namespace detectado, reintentando con namespace por defecto '/'"
+                    );
                     // Clonar valores necesarios para el segundo builder
                     let agent_for_retry = agent_id.clone();
                     let system_info_retry = system_info.clone();
                     let nb = ClientBuilder::new(self.normalize_socketio_url(&self.config.url)?)
                         .on("open", move |_p, client| {
-                            let registration_value = serde_json::to_value(&RegistrationMessage::new(system_info_retry.clone())).unwrap_or(serde_json::json!({"error":"serialize"}));
+                            let registration_value = serde_json::to_value(
+                                &RegistrationMessage::new(system_info_retry.clone()),
+                            )
+                            .unwrap_or(serde_json::json!({"error":"serialize"}));
                             let a = agent_for_retry.clone();
                             async move {
                                 info!("Socket.IO open");
@@ -169,10 +188,21 @@ impl WebSocketClient {
                                 } else {
                                     info!("Registration event emitted for agent: {}", a);
                                 }
-                            }.boxed()
+                            }
+                            .boxed()
                         })
-                        .on("close", |_p, _| async { info!("Socket.IO close"); }.boxed())
-                        .on("error", |err, _| async move { error!("Socket.IO error: {:?}", err); }.boxed())
+                        .on("close", |_p, _| {
+                            async {
+                                info!("Socket.IO close");
+                            }
+                            .boxed()
+                        })
+                        .on("error", |err, _| {
+                            async move {
+                                error!("Socket.IO error: {:?}", err);
+                            }
+                            .boxed()
+                        })
                         .on("command", on_command_cb)
                         .transport_type(TransportType::Websocket)
                         .reconnect(true)
@@ -182,7 +212,9 @@ impl WebSocketClient {
                         .await;
                     match nb {
                         Ok(c2) => c2,
-                        Err(e2) => return Err(anyhow::anyhow!("Failed to connect to Socket.IO: {}", e2)),
+                        Err(e2) => {
+                            return Err(anyhow::anyhow!("Failed to connect to Socket.IO: {}", e2))
+                        }
                     }
                 } else {
                     return Err(anyhow::anyhow!("Failed to connect to Socket.IO: {}", e));
@@ -191,7 +223,7 @@ impl WebSocketClient {
         };
 
         // Enviar CPU updates y procesar comandos periódicamente
-        let mut cpu_interval = interval(Duration::from_secs(5));
+        let mut media_info_interval = interval(Duration::from_secs(5));
         // Enviar agent-data (estado/performance) de vez en cuando
         let mut agent_data_interval = interval(Duration::from_secs(30));
         loop {
@@ -214,15 +246,31 @@ impl WebSocketClient {
                         }
                     }
                 },
-                _ = cpu_interval.tick() => {
-                    let cpu_usage = get_cpu_usage();
-                    let cpu_update = CpuUpdateMessage::new(agent_id.clone(), cpu_usage);
-                    match client.emit("cpu_update", serde_json::to_value(&cpu_update).unwrap()).await {
-                        Ok(_) => debug!("CPU update sent: {:.2}%", cpu_usage),
-                        Err(e) => {
-                            error!("Failed to send CPU update: {}", e);
-                            sleep(Duration::from_secs(1)).await;
-                        }
+                _ = media_info_interval.tick() => {
+                    // Media update (solo si hay sesión activa y está reproduciendo)
+                    match media_monitor.get_media_info() {
+                        Ok(Some(info)) => {
+                            let timestamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            let payload = serde_json::json!({
+                                "dataType": "media_update",
+                                "agentId": agent_id,
+                                "data": info,
+                                "timestamp": timestamp,
+                                "tags": ["media", "windows"]
+                            });
+                            match client.emit("agent-data", payload).await {
+                                Ok(_) => debug!("Media update sent"),
+                                Err(e) => {
+                                    error!("Failed to send media update: {}", e);
+                                    sleep(Duration::from_secs(1)).await;
+                                }
+                            }
+                        },
+                        Ok(_) => { /* sin sesión o no reproduciendo: no enviar */ },
+                        Err(e) => debug!("Media info not available: {}", e),
                     }
                 }
                 Some(cmd) = cmd_rx.recv() => {
@@ -259,16 +307,28 @@ impl WebSocketClient {
         Ok(format!("http://{}", input))
     }
 
-    fn socketio_address_and_namespace(&self, input: &str) -> crate::Result<(String, Option<String>)> {
+    fn socketio_address_and_namespace(
+        &self,
+        input: &str,
+    ) -> crate::Result<(String, Option<String>)> {
         let normalized = self.normalize_socketio_url(input)?;
         let url = Url::parse(&normalized)
             .map_err(|e| anyhow::anyhow!("Invalid URL '{}': {}", input, e))?;
         let scheme = url.scheme();
-        let host = url.host_str().ok_or_else(|| anyhow::anyhow!("URL missing host"))?;
-        let port_part = match url.port() { Some(p) => format!(":{}", p), None => String::new() };
+        let host = url
+            .host_str()
+            .ok_or_else(|| anyhow::anyhow!("URL missing host"))?;
+        let port_part = match url.port() {
+            Some(p) => format!(":{}", p),
+            None => String::new(),
+        };
         let address = format!("{}://{}{}", scheme, host, port_part);
         let path = url.path();
-        let namespace = if path != "/" && !path.is_empty() { Some(path.to_string()) } else { None };
+        let namespace = if path != "/" && !path.is_empty() {
+            Some(path.to_string())
+        } else {
+            None
+        };
         Ok((address, namespace))
     }
 }

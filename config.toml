@@ -1,7 +1,7 @@
 # HERMES Windows Agent Configuration
 [connection]
 # WebSocket server URL
-url = "ws://localhost:3000"
+url = "wss://backend.prometeo.miguelprez.es/"
 # Connection timeout in seconds
 timeout = 30
 # Reconnection interval in seconds
