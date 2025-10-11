@@ -1,17 +1,21 @@
-//! WebSocket client implementation for the HERMES agent
+//! WebSocket client implementation for the HERMES agent (migrado a Socket.IO)
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::FutureExt;
 use serde_json;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
 use crate::commands::{CommandResponse, IncomingCommand};
 use crate::config::ConnectionConfig;
 use crate::system::{CpuUpdateMessage, RegistrationMessage};
 
-/// WebSocket client for communicating with the HERMES server
+use rust_socketio::asynchronous::{Client, ClientBuilder};
+use rust_socketio::{Payload, TransportType};
+use url::Url;
+
+/// WebSocket client for communicating with the HERMES server via Socket.IO
 pub struct WebSocketClient {
     config: ConnectionConfig,
 }
@@ -22,25 +26,26 @@ impl WebSocketClient {
         Self { config }
     }
 
-    /// Connect to the WebSocket server and handle communication
+    /// Connect to the Socket.IO server and handle communication
     pub async fn run<F, G>(&self, mut on_command: F, mut get_cpu_usage: G) -> crate::Result<()>
     where
         F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
         G: FnMut() -> f32 + Send + Sync,
     {
+        // La librería de Socket.IO soporta reconexión automática, pero mantenemos un bucle externo por si falla la construcción del cliente
         loop {
             match self
                 .connect_and_run(&mut on_command, &mut get_cpu_usage)
                 .await
             {
                 Ok(_) => {
-                    info!("WebSocket connection closed normally");
+                    info!("Socket.IO connection closed normally");
                     break;
                 }
                 Err(e) => {
-                    error!("WebSocket connection failed: {}", e);
+                    error!("Socket.IO connection failed: {}", e);
                     warn!(
-                        "Reconnecting in {} seconds...",
+                        "Reintentando en {} segundos...",
                         self.config.reconnect_interval
                     );
                     sleep(Duration::from_secs(self.config.reconnect_interval)).await;
@@ -61,170 +66,209 @@ impl WebSocketClient {
         F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
         G: FnMut() -> f32 + Send + Sync,
     {
-        info!("Connecting to WebSocket server: {}", self.config.url);
+        info!("Connecting to Socket.IO server: {}", self.config.url);
 
-        // Connect to the WebSocket server
-        let (ws_stream, response) = connect_async(&self.config.url)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to connect to WebSocket: {}", e))?;
+        // Normalizar URL: Socket.IO espera http(s) o ws(s); permitimos wss/ws/http/https
 
-        info!(
-            "WebSocket connection established. Status: {}",
-            response.status()
-        );
-        debug!("Response headers: {:?}", response.headers());
-
-        let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-
-        // Send registration message
-        let system_info = {
-            let mut monitor = crate::system::SystemMonitor::new();
-            monitor.get_system_info()
-        };
-
-        let registration = RegistrationMessage::new(system_info.clone());
-        let registration_json = serde_json::to_string(&registration)
-            .map_err(|e| anyhow::anyhow!("Failed to serialize registration message: {}", e))?;
-
-        ws_sender
-            .send(Message::Text(registration_json))
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to send registration message: {}", e))?;
-
-        info!(
-            "Registration message sent for agent: {}",
-            system_info.agent_id
-        );
-
-        // Set up CPU monitoring interval
-        let mut cpu_interval = interval(Duration::from_secs(5)); // Fixed 5-second interval
+        // Construir cliente asíncrono con callbacks
+        let mut system_monitor = crate::system::SystemMonitor::new();
+        let system_info = system_monitor.get_system_info();
         let agent_id = system_info.agent_id.clone();
 
-        // Main communication loop
-        loop {
-            tokio::select! {
-                // Handle incoming messages
-                msg = ws_receiver.next() => {
-                    match msg {
-                        Some(Ok(message)) => {
-                            if let Err(e) = self.handle_incoming_message(message, &mut ws_sender, on_command).await {
-                                error!("Error handling incoming message: {}", e);
+    // Canal para delegar ejecución de comandos fuera del callback
+    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<IncomingCommand>();
+
+        // Callback de comandos: parsea y envía al canal
+        let on_command_sender = cmd_tx.clone();
+    let on_command_cb = move |payload: Payload, _client: Client| {
+            // Clonar el sender ANTES del async move para que el future no capture el original
+            let sender = on_command_sender.clone();
+            async move {
+                match payload {
+                    Payload::Text(values) => {
+                        for v in values {
+                            match serde_json::from_value::<IncomingCommand>(v.clone()) {
+                                Ok(cmd) => {
+                                    info!("Received command: {}", cmd.command_type);
+                                    if let Err(e) = sender.send(cmd) {
+                                        error!("Failed to queue command: {}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to parse command payload: {}", e);
+                                }
                             }
                         }
-                        Some(Err(e)) => {
-                            error!("WebSocket receive error: {}", e);
-                            break;
-                        }
-                        None => {
-                            info!("WebSocket connection closed by server");
-                            break;
+                    }
+                    Payload::Binary(_) => {
+                        warn!("Binary payload for command not supported");
+                    }
+                    _ => {}
+                }
+            }
+            .boxed()
+        };
+
+        // Construcción del cliente con opciones de transporte y reconexión
+        let reconnect_min = self.config.reconnect_interval.max(1);
+        let reconnect_max = reconnect_min * 4;
+
+        // Si la URL incluye path, úsalo como namespace
+        let (address, namespace) = self.socketio_address_and_namespace(&self.config.url)?;
+
+        // Preparar registro para emitirlo al abrir conexión
+        let registration_value = serde_json::to_value(&RegistrationMessage::new(system_info.clone()))
+            .map_err(|e| anyhow::anyhow!("Failed to serialize registration message: {}", e))?;
+        let reg_agent_id = agent_id.clone();
+
+    let mut builder = ClientBuilder::new(address)
+            // Namespace por defecto "/"; si tu server usa "/agent" puedes cambiarlo aquí
+            .on("open", move |_p, client| {
+                let registration_value = registration_value.clone();
+                let reg_agent_id = reg_agent_id.clone();
+                async move {
+                    info!("Socket.IO open");
+                    if let Err(e) = client.emit("register", registration_value).await {
+                        error!("Failed to emit register on open: {}", e);
+                    } else {
+                        info!("Registration event emitted for agent: {}", reg_agent_id);
+                    }
+                }.boxed()
+            })
+            .on("close", |_p, _| async { info!("Socket.IO close"); }.boxed())
+            .on("error", |err, _| async move { error!("Socket.IO error: {:?}", err); }.boxed())
+            .on("command", on_command_cb.clone())
+            .transport_type(TransportType::Websocket)
+            .reconnect(true)
+            .reconnect_on_disconnect(true)
+            .reconnect_delay(reconnect_min, reconnect_max)
+            ;
+
+        if let Some(ns) = namespace {
+            builder = builder.namespace(ns);
+        }
+
+        // Intentar conectar; si el server devuelve Invalid namespace, reintentar sin namespace
+        let client = match builder.connect().await {
+            Ok(c) => c,
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("Invalid namespace") {
+                    warn!("Invalid namespace detectado, reintentando con namespace por defecto '/'");
+                    // Clonar valores necesarios para el segundo builder
+                    let agent_for_retry = agent_id.clone();
+                    let system_info_retry = system_info.clone();
+                    let nb = ClientBuilder::new(self.normalize_socketio_url(&self.config.url)?)
+                        .on("open", move |_p, client| {
+                            let registration_value = serde_json::to_value(&RegistrationMessage::new(system_info_retry.clone())).unwrap_or(serde_json::json!({"error":"serialize"}));
+                            let a = agent_for_retry.clone();
+                            async move {
+                                info!("Socket.IO open");
+                                if let Err(e) = client.emit("register", registration_value).await {
+                                    error!("Failed to emit register on open: {}", e);
+                                } else {
+                                    info!("Registration event emitted for agent: {}", a);
+                                }
+                            }.boxed()
+                        })
+                        .on("close", |_p, _| async { info!("Socket.IO close"); }.boxed())
+                        .on("error", |err, _| async move { error!("Socket.IO error: {:?}", err); }.boxed())
+                        .on("command", on_command_cb)
+                        .transport_type(TransportType::Websocket)
+                        .reconnect(true)
+                        .reconnect_on_disconnect(true)
+                        .reconnect_delay(reconnect_min, reconnect_max)
+                        .connect()
+                        .await;
+                    match nb {
+                        Ok(c2) => c2,
+                        Err(e2) => return Err(anyhow::anyhow!("Failed to connect to Socket.IO: {}", e2)),
+                    }
+                } else {
+                    return Err(anyhow::anyhow!("Failed to connect to Socket.IO: {}", e));
+                }
+            }
+        };
+
+        // Enviar CPU updates y procesar comandos periódicamente
+        let mut cpu_interval = interval(Duration::from_secs(5));
+        // Enviar agent-data (estado/performance) de vez en cuando
+        let mut agent_data_interval = interval(Duration::from_secs(30));
+        loop {
+            tokio::select! {
+                // Publicación periódica de información general del agente
+                _ = agent_data_interval.tick() => {
+                    // Recopilar snapshot del sistema
+                    let info = system_monitor.get_system_info();
+                    let payload = serde_json::json!({
+                        "agentId": info.agent_id,
+                        "data": info,
+                        "dataType": "system_status",
+                        "tags": ["agent", "windows"]
+                    });
+                    match client.emit("agent-data", payload).await {
+                        Ok(_) => debug!("agent-data enviado"),
+                        Err(e) => {
+                            error!("No se pudo enviar agent-data: {}", e);
+                            sleep(Duration::from_secs(1)).await;
                         }
                     }
-                }
-
-                // Send CPU updates periodically
+                },
                 _ = cpu_interval.tick() => {
                     let cpu_usage = get_cpu_usage();
                     let cpu_update = CpuUpdateMessage::new(agent_id.clone(), cpu_usage);
-
-                    match serde_json::to_string(&cpu_update) {
-                        Ok(json) => {
-                            if let Err(e) = ws_sender.send(Message::Text(json)).await {
-                                error!("Failed to send CPU update: {}", e);
-                                break;
-                            }
-                            debug!("CPU update sent: {:.2}%", cpu_usage);
-                        }
+                    match client.emit("cpu_update", serde_json::to_value(&cpu_update).unwrap()).await {
+                        Ok(_) => debug!("CPU update sent: {:.2}%", cpu_usage),
                         Err(e) => {
-                            error!("Failed to serialize CPU update: {}", e);
+                            error!("Failed to send CPU update: {}", e);
+                            sleep(Duration::from_secs(1)).await;
                         }
+                    }
+                }
+                Some(cmd) = cmd_rx.recv() => {
+                    let handle = on_command(cmd);
+                    let response = handle.await.unwrap_or_else(|e| {
+                        error!("Command execution task failed: {}", e);
+                        CommandResponse {
+                            message_type: "command_response".to_string(),
+                            request_id: None,
+                            success: false,
+                            result: None,
+                            error: Some("Internal error".to_string()),
+                        }
+                    });
+                    if let Err(e) = client.emit("command_response", serde_json::to_value(&response).unwrap_or(serde_json::json!({"error":"serialize"}))).await {
+                        error!("Failed to send command response: {}", e);
                     }
                 }
             }
         }
-
-        Ok(())
     }
 
-    /// Handle incoming WebSocket messages
-    async fn handle_incoming_message<F>(
-        &self,
-        message: Message,
-        ws_sender: &mut futures_util::stream::SplitSink<
-            tokio_tungstenite::WebSocketStream<
-                tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-            >,
-            Message,
-        >,
-        on_command: &mut F,
-    ) -> crate::Result<()>
-    where
-        F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
-    {
-        match message {
-            Message::Text(text) => {
-                debug!("Received text message: {}", text);
-
-                // Try to parse as a command
-                match serde_json::from_str::<IncomingCommand>(&text) {
-                    Ok(command) => {
-                        info!("Received command: {}", command.command_type);
-
-                        // Execute command asynchronously
-                        let response_task = on_command(command);
-
-                        // We can't clone the sender, so we'll handle the response inline
-                        let response = response_task.await.unwrap_or_else(|e| {
-                            error!("Command execution task failed: {}", e);
-                            CommandResponse {
-                                message_type: "command_response".to_string(),
-                                request_id: None,
-                                success: false,
-                                result: None,
-                                error: Some("Internal error".to_string()),
-                            }
-                        });
-
-                        match serde_json::to_string(&response) {
-                            Ok(response_json) => {
-                                if let Err(e) = ws_sender.send(Message::Text(response_json)).await {
-                                    error!("Failed to send command response: {}", e);
-                                }
-                            }
-                            Err(e) => {
-                                error!("Failed to serialize command response: {}", e);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to parse incoming message as command: {}", e);
-                        debug!("Message content: {}", text);
-                    }
-                }
-            }
-            Message::Binary(data) => {
-                debug!("Received binary message: {} bytes", data.len());
-                warn!("Binary messages are not supported");
-            }
-            Message::Ping(data) => {
-                debug!("Received ping, sending pong");
-                ws_sender
-                    .send(Message::Pong(data))
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to send pong: {}", e))?;
-            }
-            Message::Pong(_) => {
-                debug!("Received pong");
-            }
-            Message::Close(frame) => {
-                info!("Received close message: {:?}", frame);
-                return Err(anyhow::anyhow!("Connection closed by server"));
-            }
-            Message::Frame(_) => {
-                debug!("Received raw frame (should not happen in normal operation)");
+    fn normalize_socketio_url(&self, input: &str) -> crate::Result<String> {
+        // Si el usuario pasó wss://.../agent como antes, lo aceptamos como está.
+        // Socket.IO maneja http(s) y ws(s). Preferimos http(s) para handshake estándar.
+        // Si la URL ya tiene esquema http/https/ws/wss, la retornamos.
+        if let Ok(url) = Url::parse(input) {
+            let scheme = url.scheme();
+            if matches!(scheme, "http" | "https" | "ws" | "wss") {
+                return Ok(input.to_string());
             }
         }
+        // Si no tiene esquema, asumir http
+        Ok(format!("http://{}", input))
+    }
 
-        Ok(())
+    fn socketio_address_and_namespace(&self, input: &str) -> crate::Result<(String, Option<String>)> {
+        let normalized = self.normalize_socketio_url(input)?;
+        let url = Url::parse(&normalized)
+            .map_err(|e| anyhow::anyhow!("Invalid URL '{}': {}", input, e))?;
+        let scheme = url.scheme();
+        let host = url.host_str().ok_or_else(|| anyhow::anyhow!("URL missing host"))?;
+        let port_part = match url.port() { Some(p) => format!(":{}", p), None => String::new() };
+        let address = format!("{}://{}{}", scheme, host, port_part);
+        let path = url.path();
+        let namespace = if path != "/" && !path.is_empty() { Some(path.to_string()) } else { None };
+        Ok((address, namespace))
     }
 }

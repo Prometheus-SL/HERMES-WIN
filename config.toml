@@ -1,7 +1,7 @@
 # HERMES Windows Agent Configuration
 [connection]
 # WebSocket server URL
-url = "wss://backend.prometeo.miguelprez.es/socket.io/?EIO=4&transport=websocket"
+url = "ws://localhost:3000"
 # Connection timeout in seconds
 timeout = 30
 # Reconnection interval in seconds
@@ -30,7 +30,7 @@ verify_tls = true
 allowed_commands = ["volume", "open_app"]
 # Enable volume control
 allow_volume_control = true
-# Enable application launching
+# Enable application launching  º
 allow_app_launch = true
 # Allowed applications to launch (empty = all)
 allowed_apps = []
