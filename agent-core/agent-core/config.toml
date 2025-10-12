@@ -1,0 +1,29 @@
+[connection]
+url = "wss://localhost:8080/agent"
+timeout = 30
+reconnect_interval = 5
+
+[agent]
+name = "HERMES-WIN-Agent"
+cpu_interval = 5
+enable_tray = true
+
+[security]
+verify_tls = true
+
+[commands]
+allowed_commands = [
+    "volume",
+    "open_app",
+]
+allow_volume_control = true
+allow_app_launch = true
+allowed_apps = []
+
+[logging]
+level = "info"
+log_to_file = true
+log_file = "agent.log"
+
+[auth]
+server_url = "http://localhost:3000"

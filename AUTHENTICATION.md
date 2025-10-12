@@ -1,28 +1,56 @@
 # Autenticación JWT para HERMES Agent
 
-El agente HERMES ahora implementa autenticación JWT siguiendo la documentación del backend. Esta guía explica cómo configurar y usar la nueva funcionalidad de autenticación.
+El agente HERMES ahora implementa autenticación JWT con **almacenamiento seguro de credenciales** siguiendo la documentación del backend. Esta guía explica cómo configurar y usar la nueva funcionalidad de autenticación.
+
+## 🔐 Almacenamiento Seguro de Credenciales
+
+Las credenciales del usuario se almacenan de manera segura en el sistema operativo:
+- **Windows Credential Manager**: Almacenamiento principal de email y contraseña
+- **Directorio del usuario**: Tokens JWT encriptados y configuración de respaldo
+- **Archivo de configuración**: Solo URL del servidor (sin credenciales sensibles)
+
+### Ubicaciones de Almacenamiento
+
+- **Credenciales**: `Windows Credential Manager` → Servicio "HERMES-WIN-Agent"
+- **Tokens JWT**: `%APPDATA%\HERMES-WIN\tokens.json` (encriptados)
+- **Configuración**: `%APPDATA%\HERMES-WIN\user_config.json` (sin contraseñas)
 
 ## Configuración
 
-### 1. Configurar credenciales de usuario
+### 1. Configuración Inicial de Credenciales
 
-Edita el archivo `config.toml` y completa las credenciales en la sección `[auth]`:
+**⚠️ IMPORTANTE**: Las credenciales ya NO se almacenan en `config.toml` por seguridad.
+
+Ejecuta la herramienta de configuración inicial:
+
+```bash
+cargo run --example credential_setup
+```
+
+Esta herramienta te permitirá:
+- Introducir tu email y contraseña de forma segura
+- Almacenar las credenciales en Windows Credential Manager
+- Verificar que las credenciales funcionan con el servidor
+- Configurar el almacenamiento automático de tokens
+
+### 2. Archivo de Configuración
+
+El archivo `config.toml` solo contiene la URL del servidor:
 
 ```toml
 [auth]
 # Server URL para autenticación (HTTP/HTTPS)
 server_url = "http://localhost:3000"
-# Email del usuario propietario del agente
-email = "usuario@dominio.com"
-# Contraseña del usuario
-password = "tu_contraseña_segura"
+# Note: Email y contraseña se almacenan de forma segura en Windows Credential Manager
 ```
 
-### 2. Verificar configuración del servidor
+### 3. Verificar Configuración
 
-Asegúrate de que la URL del servidor en `[auth]` apunte al backend correcto:
-- Para desarrollo local: `http://localhost:3000`
-- Para producción: `https://tu-servidor.com`
+Para verificar que todo está configurado correctamente:
+
+```bash
+cargo run --example auth_demo
+```
 
 ## Funcionalidad Implementada
 
@@ -86,11 +114,31 @@ x-agent-id: <AGENT_ID>
 4. Se conecta por WebSocket e incluye el token en la identificación
 5. El servidor valida el token y vincula el agentId al usuario
 
-### Gestión de Tokens
+## Gestión de Credenciales
 
-- Los tokens se almacenan en memoria durante la ejecución
-- El `accessToken` se usa para todas las comunicaciones autenticadas
-- Si la autenticación falla, el agente continúa pero puede tener funcionalidad limitada
+### Configurar/Reconfigurar Credenciales
+```bash
+cargo run --example credential_setup
+```
+
+### Verificar Estado de Autenticación
+```bash
+cargo run --example auth_demo
+```
+
+### Limpiar Credenciales (Reset)
+```bash
+# Desde código
+agent.clear_credentials().await?;
+
+# O manualmente desde Windows:
+# Control Panel → Credential Manager → Windows Credentials → "HERMES-WIN-Agent"
+```
+
+### Ubicaciones de Archivos
+- **Windows Credential Manager**: `Control Panel → Credential Manager`
+- **Tokens**: `%APPDATA%\HERMES-WIN\tokens.json`
+- **Config backup**: `%APPDATA%\HERMES-WIN\user_config.json`
 
 ### Casos de Error
 
@@ -131,30 +179,65 @@ pub struct AuthConfig {
 
 ## Seguridad
 
-- Las contraseñas se almacenan en texto plano en `config.toml` - considera usar variables de entorno en producción
-- Los tokens JWT se almacenan solo en memoria, no se persisten en disco
+### ✅ Ventajas del Nuevo Sistema
+- **Windows Credential Manager**: Credenciales protegidas por el SO
+- **Tokens encriptados**: Los JWT se almacenan con encriptación básica
+- **Sin credenciales en archivos**: El `config.toml` no contiene información sensible
+- **Gestión automática**: Los tokens se renuevan y gestionan automáticamente
+
+### 🔒 Mejores Prácticas
 - Usa HTTPS para comunicaciones en producción
+- Los tokens tienen expiración automática (1 hora por defecto)
+- Las credenciales se pueden gestionar desde Windows Credential Manager
+- El agente detecta tokens expirados y realiza re-autenticación automática
+
+### 🛡️ Consideraciones de Seguridad
+- Las credenciales están protegidas por las credenciales de Windows del usuario
+- Los tokens se almacenan en el directorio del usuario con permisos restringidos
+- El agente limpia automáticamente tokens expirados
 
 ## Ejemplo Completo
 
-```toml
-# config.toml
-[auth]
-server_url = "https://hermes-backend.com"
-email = "admin@empresa.com"
-password = "password123"
+### 1. Configuración Inicial
+```bash
+# Paso 1: Configurar credenciales
+cargo run --example credential_setup
 
-[connection]
-url = "wss://hermes-backend.com/"
+# Introducir:
+# Email: admin@empresa.com  
+# Password: [contraseña segura]
 ```
 
-Al ejecutar el agente:
+### 2. Verificar Funcionamiento
+```bash
+# Paso 2: Probar autenticación
+cargo run --example auth_demo
+```
 
-1. Login automático → Obtiene tokens JWT
-2. Conexión WebSocket → Se identifica con token
-3. Envío de datos → Usa Authorization Bearer
-4. El servidor valida el agentId contra el propietario del token
+### 3. Ejecutar Agente
+```bash
+# Paso 3: Iniciar agente en producción
+cargo run --bin agent-tray
+```
 
-## Migración desde API Key
+### Flujo Automático:
+1. **Configuración inicial** → Credenciales en Windows Credential Manager
+2. **Login automático** → Obtiene tokens JWT del servidor
+3. **Conexión WebSocket** → Se identifica con token JWT
+4. **Envío de datos** → Usa Authorization Bearer automáticamente
+5. **Renovación automática** → Gestiona expiración de tokens
 
-La implementación anterior con API Key ya no es necesaria para la ruta `/api/v1/agents/data`. El middleware de API Key se mantiene en el backend para compatibilidad con otras rutas, pero la autenticación JWT es ahora el método principal.
+## Migración desde Configuración Anterior
+
+Si tenías credenciales en `config.toml`, ejecuta:
+
+```bash
+# 1. Configurar credenciales seguras
+cargo run --example credential_setup
+
+# 2. Limpiar config.toml (opcional)
+# Remover líneas de email/password del archivo
+
+# 3. Verificar funcionamiento
+cargo run --example auth_demo
+```

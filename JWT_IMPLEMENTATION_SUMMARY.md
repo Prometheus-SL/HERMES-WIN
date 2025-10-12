@@ -1,73 +1,82 @@
-# Resumen de Implementación: Autenticación JWT para HERMES Agent
+# Resumen de Implementación: Autenticación JWT con Credenciales Seguras para HERMES Agent
 
 ## ✅ Cambios Realizados
 
-### 1. **Nuevas Dependencias**
-- **reqwest**: Cliente HTTP para realizar peticiones de autenticación
-- Agregado en `Cargo.toml` con features `json` y `rustls-tls`
+### 1. **Almacenamiento Seguro de Credenciales**
+- **Windows Credential Manager**: Credenciales principales (email/password)
+- **Directorio del usuario**: Tokens JWT encriptados y configuración de respaldo
+- **Eliminación de credenciales en config.toml**: Mayor seguridad
 
-### 2. **Nuevo Módulo de Autenticación** (`auth.rs`)
-- **AuthManager**: Clase principal para manejar autenticación JWT
-- **AgentLoginRequest**: Estructura para petición de login
-- **AgentLoginResponse**: Estructura para respuesta de login
-- **TokenPair**: Gestión de access_token y refresh_token
-- **AgentDataRequest**: Estructura para envío de datos con autenticación
+### 2. **Nuevas Dependencias**
+- **reqwest**: Cliente HTTP para peticiones de autenticación
+- **keyring**: Acceso a Windows Credential Manager
+- **dirs**: Gestión de directorios del usuario
+
+### 3. **Nuevo Módulo de Credenciales Seguras** (`credentials.rs`)
+- **CredentialManager**: Gestión centralizada de credenciales
+- **UserCredentials**: Estructura para credenciales del usuario
+- **StoredTokens**: Gestión de tokens JWT con expiración
+- **Almacenamiento múltiple**: Credential Manager + archivos encriptados
 
 #### Métodos Principales:
-- `login()`: Realiza POST a `/auth/agent/login`
-- `send_data()`: Envía datos a `/api/v1/agents/data` con Bearer token
-- `has_valid_token()`: Verifica si hay token válido
-- `get_access_token()`: Obtiene token actual
-- `clear_tokens()`: Limpia tokens (logout)
+- `store_credentials()`: Almacena email/password en Credential Manager
+- `load_credentials()`: Carga credenciales desde almacenamiento seguro
+- `store_tokens()`: Almacena tokens JWT encriptados
+- `load_tokens()`: Carga tokens con verificación de expiración
+- `clear_all()`: Limpia todas las credenciales y tokens
 
-### 3. **Configuración Extendida** (`config.rs`)
-- **AuthConfig**: Nueva estructura de configuración
-  - `server_url`: URL del backend para autenticación
-  - `email`: Email del usuario propietario
-  - `password`: Contraseña del usuario
-  - `access_token`: Token JWT (auto-gestionado)
-  - `refresh_token`: Token de renovación (auto-gestionado)
+### 4. **AuthManager Refactorizado** (`auth.rs`)
+- **Integración con CredentialManager**: Usa almacenamiento seguro
+- **Gestión automática de tokens**: Carga/guarda tokens automáticamente
+- **Re-autenticación inteligente**: Usa tokens almacenados si son válidos
+- **Limpieza automática**: Gestiona tokens expirados
 
-### 4. **Agente Principal Modificado** (`agent.rs`)
-- Integración de **AuthManager** en la estructura principal
-- **login()**: Método para autenticación manual
-- **send_data_http()**: Envío de datos por HTTP con JWT
-- **send_performance_data()**: Envío automático de datos de rendimiento
-- **get_access_token()**: Obtener token para WebSocket
+#### Flujo Mejorado:
+1. Intenta cargar tokens válidos existentes
+2. Si no hay tokens, carga credenciales del Credential Manager
+3. Realiza login y almacena tokens de forma segura
+4. Gestiona expiración y renovación automática
 
-### 5. **WebSocket Client Actualizado** (`websocket.rs`)
-- Soporte para token de autenticación en el método `run()`
-- **AgentIdentifyMessage**: Nuevo mensaje de identificación con token
-- Lógica dual: envía `identify` (con token) + `register` (tradicional)
-- El servidor valida el token y vincula el agentId al usuario
+### 5. **Configuración Simplificada** (`config.rs`)
+- **AuthConfig minimalista**: Solo contiene `server_url`
+- **Sin credenciales sensibles**: Email/password removidos del archivo
+- **Mayor seguridad**: Credenciales fuera del control de versiones
 
-### 6. **Sistema de Mensajes** (`system.rs`)
-- **AgentIdentifyMessage**: Estructura para identificación WebSocket
-  ```json
-  {
-    "type": "agent",
-    "agentId": "PC-<HOSTNAME>",
-    "token": "<accessToken>"
-  }
-  ```
+### 6. **Herramientas de Configuración**
+- **credential_setup.rs**: Herramienta interactiva para configurar credenciales
+- **auth_demo.rs**: Demostración del sistema de autenticación
+- **Interfaz amigable**: Configuración paso a paso con validación
 
-### 7. **Configuración Actualizada** (`config.toml`)
-- Nueva sección `[auth]` con campos para credenciales
-- Documentación y ejemplos incluidos
+### 7. **Agente Principal Actualizado** (`agent.rs`)
+- **setup_credentials()**: Configuración inicial de credenciales
+- **has_stored_credentials()**: Verificación de credenciales almacenadas
+- **clear_credentials()**: Limpieza completa de credenciales
+- **Gestión de errores mejorada**: Mejor manejo de fallos de autenticación
 
-## 🔄 Flujo de Autenticación Implementado
+## � Sistema de Seguridad Implementado
 
-### Al Iniciar el Agente:
-1. **Carga configuración** → Lee email/password del `config.toml`
-2. **Login HTTP** → POST `/auth/agent/login` con credenciales + agentId
-3. **Almacena tokens** → Guarda access_token y refresh_token en memoria
-4. **Conexión WebSocket** → Incluye token en mensaje `identify`
-5. **Validación servidor** → Verifica token y vincula agentId al usuario
+### ✅ Almacenamiento Seguro Multi-Capa
+- **Nivel 1**: Windows Credential Manager (credenciales principales)
+- **Nivel 2**: Archivos encriptados en directorio del usuario (tokens)
+- **Nivel 3**: Configuración sin datos sensibles (solo URLs)
 
-### Para Envío de Datos HTTP:
-1. **Prepara request** → Incluye Authorization Bearer + x-agent-id header
-2. **Envía a `/api/v1/agents/data`** → Con datos JSON
-3. **Validación servidor** → Verifica token y propiedad del agentId
+### ✅ Gestión Automática de Tokens
+- Carga automática de tokens válidos existentes
+- Re-autenticación solo cuando es necesario
+- Limpieza automática de tokens expirados
+- Verificación de expiración antes de uso
+
+### ✅ Flujo de Autenticación Mejorado
+1. **Verificación de tokens existentes** → Evita logins innecesarios
+2. **Carga de credenciales seguras** → Desde Credential Manager
+3. **Login automático** → Solo si no hay tokens válidos
+4. **Almacenamiento seguro** → Tokens encriptados en directorio del usuario
+5. **Identificación WebSocket** → Con token JWT automático
+
+### ✅ Herramientas de Usuario
+- **Configuración inicial interactiva** → `cargo run --example credential_setup`
+- **Verificación de estado** → `cargo run --example auth_demo`
+- **Gestión desde Windows** → Control Panel → Credential Manager
 
 ## 📋 Características Implementadas
 

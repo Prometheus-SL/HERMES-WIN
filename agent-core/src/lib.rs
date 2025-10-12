@@ -7,6 +7,7 @@ pub mod agent;
 pub mod auth;
 pub mod commands;
 pub mod config;
+pub mod credentials;
 pub mod system;
 pub mod websocket;
 pub mod media;

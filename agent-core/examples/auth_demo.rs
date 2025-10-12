@@ -1,7 +1,7 @@
-//! Ejemplo de uso del sistema de autenticación JWT
+//! Ejemplo de uso del sistema de autenticación JWT con credenciales seguras
 
 use agent_core::{Agent, Config};
-use tracing::{info, error};
+use tracing::{info, error, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,6 +16,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Obtener Agent ID
     let agent_id = agent.agent_id().await;
     info!("Agent ID: {}", agent_id);
+    
+    // Verificar si hay credenciales almacenadas
+    if !agent.has_stored_credentials().await {
+        error!("❌ No hay credenciales almacenadas.");
+        info!("Por favor, ejecuta primero: cargo run --example credential_setup");
+        return Ok(());
+    }
+    
+    info!("✅ Credenciales encontradas en almacenamiento seguro");
     
     // Intentar login
     info!("1. Performing agent login...");
@@ -40,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let custom_data = serde_json::json!({
                 "event": "agent_started",
                 "version": "0.1.0",
-                "status": "online"
+                "status": "online",
+                "auth_method": "jwt_secure_storage"
             });
             
             match agent.send_data_http(
@@ -56,15 +66,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => {
             error!("✗ Login failed: {}", e);
-            info!("Please check your credentials in config.toml:");
-            info!("- auth.email should contain your user email");
-            info!("- auth.password should contain your password");
-            info!("- auth.server_url should point to the correct backend");
+            warn!("Posibles causas:");
+            warn!("- Credenciales incorrectas almacenadas");
+            warn!("- Servidor no disponible");
+            warn!("- Tokens expirados");
+            info!("💡 Solución: Ejecuta 'cargo run --example credential_setup' para reconfigurar");
         }
     }
     
     info!("4. Starting WebSocket connection...");
     info!("The agent will now connect to the server with JWT authentication...");
+    info!("Press Ctrl+C to stop the agent.");
     
     // Iniciar el agente (esto incluye la conexión WebSocket con token)
     agent.run().await?;

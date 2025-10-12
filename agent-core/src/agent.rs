@@ -21,7 +21,7 @@ pub struct Agent {
 
 impl Agent {
     /// Create a new agent with the given configuration
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> crate::Result<Self> {
         // Ensure a rustls crypto provider is installed (ring). Ignore error if already set.
         let _ = rustls::crypto::ring::default_provider().install_default();
 
@@ -35,24 +35,24 @@ impl Agent {
         // Get agent ID from system monitor for auth manager initialization
         let temp_monitor = SystemMonitor::new();
         let agent_id = temp_monitor.agent_id().to_string();
-        let auth_manager = Arc::new(Mutex::new(AuthManager::new(
-            config.auth.clone(),
-            agent_id,
-        )));
+        let auth_manager = Arc::new(Mutex::new(
+            AuthManager::new(config.auth.clone(), agent_id)
+                .map_err(|e| anyhow::anyhow!("Failed to create AuthManager: {}", e))?
+        ));
 
-        Self {
+        Ok(Self {
             config,
             system_monitor,
             command_executor,
             websocket_client,
             auth_manager,
-        }
+        })
     }
 
     /// Create agent from configuration file
     pub fn from_config_file(config_path: &str) -> crate::Result<Self> {
         let config = Config::load_or_default(config_path)?;
-        Ok(Self::new(config))
+        Self::new(config)
     }
 
     /// Get the agent ID
@@ -69,12 +69,6 @@ impl Agent {
             Ok(tokens) => {
                 info!("Agent login successful");
                 debug!("Access token obtained: {}...", &tokens.access_token[..20]);
-                
-                // Update the auth manager's config with the new tokens
-                let mut updated_config = auth_manager.get_config().clone();
-                updated_config.access_token = Some(tokens.access_token);
-                updated_config.refresh_token = Some(tokens.refresh_token);
-                auth_manager.update_config(updated_config);
                 
                 info!("Authentication tokens stored successfully");
                 Ok(())
@@ -132,6 +126,40 @@ impl Agent {
             "normal",
             vec!["performance".to_string(), "cpu".to_string()]
         ).await
+    }
+
+    /// Setup user credentials for authentication (first-time setup)
+    pub async fn setup_credentials(&self, email: String, password: String) -> crate::Result<()> {
+        let auth_manager = self.auth_manager.lock().await;
+        auth_manager.setup_credentials(email, password)?;
+        info!("User credentials configured successfully");
+        Ok(())
+    }
+
+    /// Check if credentials are already configured
+    pub async fn has_stored_credentials(&self) -> bool {
+        let auth_manager = self.auth_manager.lock().await;
+        auth_manager.has_stored_credentials()
+    }
+
+    /// Clear all stored credentials and tokens (logout/reset)
+    pub async fn clear_credentials(&self) -> crate::Result<()> {
+        let mut auth_manager = self.auth_manager.lock().await;
+        auth_manager.clear_tokens()?;
+        info!("All credentials and tokens cleared");
+        Ok(())
+    }
+
+    /// Get authentication status information
+    pub async fn get_auth_status(&self) -> AuthStatus {
+        let auth_manager = self.auth_manager.lock().await;
+        
+        AuthStatus {
+            has_stored_credentials: auth_manager.has_stored_credentials(),
+            has_valid_token: auth_manager.has_valid_token(),
+            server_url: auth_manager.get_server_url().clone(),
+            agent_id: self.agent_id().await,
+        }
     }
 
     /// Start the agent and run indefinitely
@@ -256,4 +284,13 @@ impl Agent {
         info!("Shutting down HERMES agent");
         // Add any cleanup logic here
     }
+}
+
+/// Authentication status information
+#[derive(Debug, Clone)]
+pub struct AuthStatus {
+    pub has_stored_credentials: bool,
+    pub has_valid_token: bool,
+    pub server_url: String,
+    pub agent_id: String,
 }

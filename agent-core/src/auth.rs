@@ -1,6 +1,7 @@
 //! Authentication module for JWT-based agent authentication
 
 use crate::config::AuthConfig;
+use crate::credentials::{CredentialManager, UserCredentials, StoredTokens};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
@@ -59,44 +60,58 @@ pub struct AgentDataRequest {
 
 /// Authentication manager for handling JWT tokens and login
 pub struct AuthManager {
-    config: AuthConfig,
+    server_url: String,
     client: reqwest::Client,
     agent_id: String,
+    credential_manager: CredentialManager,
+    current_tokens: Option<StoredTokens>,
 }
 
 impl AuthManager {
     /// Create a new authentication manager
-    pub fn new(config: AuthConfig, agent_id: String) -> Self {
+    pub fn new(config: AuthConfig, agent_id: String) -> Result<Self> {
         let client = reqwest::Client::builder()
             .user_agent("HERMES-WIN-Agent/0.1.0")
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .expect("Failed to create HTTP client");
+            .map_err(|e| anyhow::anyhow!("Failed to create HTTP client: {}", e))?;
 
-        Self {
-            config,
+        let credential_manager = CredentialManager::new()?;
+
+        Ok(Self {
+            server_url: config.server_url,
             client,
             agent_id,
-        }
+            credential_manager,
+            current_tokens: None,
+        })
     }
 
     /// Perform agent login and get JWT tokens
     pub async fn login(&mut self) -> Result<TokenPair> {
-        if self.config.email.is_empty() || self.config.password.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Email and password must be configured for authentication"
-            ));
+        // First try to load existing valid tokens
+        if let Ok(stored_tokens) = self.credential_manager.load_tokens() {
+            info!("Using stored authentication tokens");
+            self.current_tokens = Some(stored_tokens.clone());
+            return Ok(TokenPair {
+                access_token: stored_tokens.access_token,
+                refresh_token: stored_tokens.refresh_token,
+            });
         }
 
-        info!("Attempting agent login for email: {}", self.config.email);
+        // Load credentials from secure storage
+        let credentials = self.credential_manager.load_credentials()
+            .map_err(|e| anyhow::anyhow!("No stored credentials found. Please run credential setup first: {}", e))?;
+
+        info!("Attempting agent login for email: {}", credentials.email);
         
         let login_request = AgentLoginRequest {
-            email: self.config.email.clone(),
-            password: self.config.password.clone(),
+            email: credentials.email,
+            password: credentials.password,
             agent_id: self.agent_id.clone(),
         };
 
-        let login_url = format!("{}/auth/agent/login", self.config.server_url);
+        let login_url = format!("{}/auth/agent/login", self.server_url);
         debug!("Sending login request to: {}", login_url);
 
         let response = self
@@ -120,9 +135,20 @@ impl AuthManager {
 
         let login_response: AgentLoginResponseData = response.json().await?;
         
-        // Update config with new tokens
-        self.config.access_token = Some(login_response.data.tokens.access_token.clone());
-        self.config.refresh_token = Some(login_response.data.tokens.refresh_token.clone());
+        // Store tokens securely
+        let stored_tokens = StoredTokens {
+            access_token: login_response.data.tokens.access_token.clone(),
+            refresh_token: login_response.data.tokens.refresh_token.clone(),
+            expires_at: Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() + 3600, // 1 hour expiry
+            ),
+        };
+        
+        self.credential_manager.store_tokens(&stored_tokens)?;
+        self.current_tokens = Some(stored_tokens);
 
         info!("Agent login successful for agent: {}", login_response.data.agent.id);
         debug!("Received access token: {}...", &login_response.data.tokens.access_token[..20]);
@@ -133,12 +159,12 @@ impl AuthManager {
     /// Send data to the server with authentication
     pub async fn send_data(&self, data_request: AgentDataRequest) -> Result<()> {
         let access_token = self
-            .config
-            .access_token
+            .current_tokens
             .as_ref()
+            .map(|t| &t.access_token)
             .ok_or_else(|| anyhow::anyhow!("No access token available. Please login first."))?;
 
-        let data_url = format!("{}/api/v1/agents/data", self.config.server_url);
+        let data_url = format!("{}/api/v1/agents/data", self.server_url);
         debug!("Sending data to: {}", data_url);
 
         let response = self
@@ -175,28 +201,50 @@ impl AuthManager {
 
     /// Check if we have a valid access token
     pub fn has_valid_token(&self) -> bool {
-        self.config.access_token.is_some()
+        self.current_tokens.is_some()
     }
 
     /// Get the current access token for WebSocket authentication
     pub fn get_access_token(&self) -> Option<&String> {
-        self.config.access_token.as_ref()
+        self.current_tokens.as_ref().map(|t| &t.access_token)
     }
 
-    /// Update the authentication configuration
-    pub fn update_config(&mut self, config: AuthConfig) {
-        self.config = config;
+    /// Update the server URL
+    pub fn update_server_url(&mut self, server_url: String) {
+        self.server_url = server_url;
     }
 
-    /// Get the current authentication configuration
-    pub fn get_config(&self) -> &AuthConfig {
-        &self.config
+    /// Get the current server URL
+    pub fn get_server_url(&self) -> &String {
+        &self.server_url
     }
 
     /// Clear stored tokens (for logout)
-    pub fn clear_tokens(&mut self) {
-        self.config.access_token = None;
-        self.config.refresh_token = None;
+    pub fn clear_tokens(&mut self) -> Result<()> {
+        self.current_tokens = None;
+        // Also clear from persistent storage
+        if let Err(e) = self.credential_manager.clear_all() {
+            warn!("Failed to clear persistent credentials: {}", e);
+        }
         info!("Authentication tokens cleared");
+        Ok(())
+    }
+
+    /// Setup credentials (for initial configuration)
+    pub fn setup_credentials(&self, email: String, password: String) -> Result<()> {
+        let credentials = UserCredentials {
+            email,
+            password,
+            server_url: self.server_url.clone(),
+        };
+        
+        self.credential_manager.store_credentials(&credentials)?;
+        info!("Credentials stored securely");
+        Ok(())
+    }
+
+    /// Check if credentials are already stored
+    pub fn has_stored_credentials(&self) -> bool {
+        self.credential_manager.has_credentials()
     }
 }

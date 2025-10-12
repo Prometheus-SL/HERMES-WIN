@@ -61,10 +61,8 @@ pub struct LoggingConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AuthConfig {
     pub server_url: String,
-    pub email: String,
-    pub password: String,
-    pub access_token: Option<String>,
-    pub refresh_token: Option<String>,
+    // Note: email, password, and tokens are now managed securely by CredentialManager
+    // They are not stored in the configuration file for security reasons
 }
 
 impl Default for Config {
@@ -99,10 +97,6 @@ impl Default for Config {
             },
             auth: AuthConfig {
                 server_url: "http://localhost:3000".to_string(),
-                email: "".to_string(),
-                password: "".to_string(),
-                access_token: None,
-                refresh_token: None,
             },
         }
     }

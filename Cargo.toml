@@ -22,6 +22,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rust_socketio = { version = "0.6", features = ["async"] }
 url = "2.5"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+keyring = "2.3"
+dirs = "5.0"
 windows = { version = "0.58", features = [
     "Foundation",
     "Media",

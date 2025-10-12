@@ -21,4 +21,6 @@ rustls = { workspace = true }
 rust_socketio = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true }
+keyring = { workspace = true }
+dirs = { workspace = true }
 windows = { workspace = true }
