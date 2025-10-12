@@ -147,6 +147,26 @@ impl RegistrationMessage {
     }
 }
 
+/// Agent identification message with JWT token for WebSocket authentication
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentIdentifyMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    #[serde(rename = "agentId")]
+    pub agent_id: String,
+    pub token: String,
+}
+
+impl AgentIdentifyMessage {
+    pub fn new(agent_id: String, token: String) -> Self {
+        Self {
+            message_type: "agent".to_string(),
+            agent_id,
+            token,
+        }
+    }
+}
+
 /// CPU usage update message sent periodically
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CpuUpdateMessage {

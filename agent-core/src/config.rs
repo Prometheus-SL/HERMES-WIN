@@ -12,6 +12,7 @@ pub struct Config {
     pub security: SecurityConfig,
     pub commands: CommandsConfig,
     pub logging: LoggingConfig,
+    pub auth: AuthConfig,
 }
 
 /// WebSocket connection configuration
@@ -56,6 +57,16 @@ pub struct LoggingConfig {
     pub log_file: String,
 }
 
+/// Authentication configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AuthConfig {
+    pub server_url: String,
+    pub email: String,
+    pub password: String,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -85,6 +96,13 @@ impl Default for Config {
                 level: "info".to_string(),
                 log_to_file: true,
                 log_file: "agent.log".to_string(),
+            },
+            auth: AuthConfig {
+                server_url: "http://localhost:3000".to_string(),
+                email: "".to_string(),
+                password: "".to_string(),
+                access_token: None,
+                refresh_token: None,
             },
         }
     }

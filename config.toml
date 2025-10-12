@@ -42,3 +42,15 @@ level = "info"
 log_to_file = true
 # Log file path
 log_file = "agent.log"
+
+[auth]
+# Server URL for authentication (HTTP/HTTPS)
+server_url = "http://localhost:3000"
+# User email for agent authentication
+email = "raulhernandez1032@gmail.com"
+# User password for agent authentication
+password = "R@yolaser10!&_"
+# Access token (auto-managed, leave empty)
+# access_token = ""
+# Refresh token (auto-managed, leave empty)
+# refresh_token = ""

@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 
+use crate::auth::AuthManager;
 use crate::commands::{CommandExecutor, IncomingCommand};
 use crate::config::Config;
 use crate::system::SystemMonitor;
@@ -15,6 +16,7 @@ pub struct Agent {
     system_monitor: Arc<Mutex<SystemMonitor>>,
     command_executor: CommandExecutor,
     websocket_client: WebSocketClient,
+    auth_manager: Arc<Mutex<AuthManager>>,
 }
 
 impl Agent {
@@ -29,12 +31,21 @@ impl Agent {
         let system_monitor = Arc::new(Mutex::new(SystemMonitor::new()));
         let command_executor = CommandExecutor::new(config.commands.clone());
         let websocket_client = WebSocketClient::new(config.connection.clone());
+        
+        // Get agent ID from system monitor for auth manager initialization
+        let temp_monitor = SystemMonitor::new();
+        let agent_id = temp_monitor.agent_id().to_string();
+        let auth_manager = Arc::new(Mutex::new(AuthManager::new(
+            config.auth.clone(),
+            agent_id,
+        )));
 
         Self {
             config,
             system_monitor,
             command_executor,
             websocket_client,
+            auth_manager,
         }
     }
 
@@ -50,6 +61,79 @@ impl Agent {
         monitor.agent_id().to_string()
     }
 
+    /// Perform agent login to get JWT tokens
+    pub async fn login(&self) -> crate::Result<()> {
+        let mut auth_manager = self.auth_manager.lock().await;
+        
+        match auth_manager.login().await {
+            Ok(tokens) => {
+                info!("Agent login successful");
+                debug!("Access token obtained: {}...", &tokens.access_token[..20]);
+                
+                // Update the auth manager's config with the new tokens
+                let mut updated_config = auth_manager.get_config().clone();
+                updated_config.access_token = Some(tokens.access_token);
+                updated_config.refresh_token = Some(tokens.refresh_token);
+                auth_manager.update_config(updated_config);
+                
+                info!("Authentication tokens stored successfully");
+                Ok(())
+            }
+            Err(e) => {
+                error!("Agent login failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+
+    /// Get the current access token for WebSocket authentication
+    pub async fn get_access_token(&self) -> Option<String> {
+        let auth_manager = self.auth_manager.lock().await;
+        auth_manager.get_access_token().cloned()
+    }
+
+    /// Send data to the server via HTTP with authentication
+    pub async fn send_data_http(&self, data: serde_json::Value, data_type: &str, priority: &str, tags: Vec<String>) -> crate::Result<()> {
+        let auth_manager = self.auth_manager.lock().await;
+        let agent_id = self.agent_id().await;
+        
+        let data_request = crate::auth::AgentDataRequest {
+            data,
+            data_type: data_type.to_string(),
+            priority: priority.to_string(),
+            tags,
+            agent_id: Some(agent_id),
+        };
+        
+        auth_manager.send_data(data_request).await
+    }
+
+    /// Send performance data to the server via HTTP
+    pub async fn send_performance_data(&self) -> crate::Result<()> {
+        let system_info = self.get_system_info().await;
+        let mut monitor = self.system_monitor.lock().await;
+        let cpu_usage = monitor.get_cpu_usage();
+        
+        let performance_data = serde_json::json!({
+            "type": "performance",
+            "cpu": cpu_usage,
+            "hostname": system_info.hostname,
+            "os_name": system_info.os_name,
+            "os_version": system_info.os_version,
+            "timestamp": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        });
+        
+        self.send_data_http(
+            performance_data,
+            "sensor",
+            "normal",
+            vec!["performance".to_string(), "cpu".to_string()]
+        ).await
+    }
+
     /// Start the agent and run indefinitely
     pub async fn run(&self) -> crate::Result<()> {
         info!("Starting HERMES agent: {}", self.config.agent.name);
@@ -59,6 +143,18 @@ impl Agent {
 
         let agent_id = self.agent_id().await;
         info!("Agent ID: {}", agent_id);
+
+        // Perform authentication login
+        info!("Attempting agent authentication...");
+        match self.login().await {
+            Ok(_) => {
+                info!("Agent authentication successful");
+            }
+            Err(e) => {
+                error!("Agent authentication failed: {}", e);
+                warn!("Continuing without authentication - WebSocket connection may fail");
+            }
+        }
 
         // Create closures for WebSocket callbacks
         let command_executor = Arc::new(self.command_executor.clone());
@@ -89,7 +185,8 @@ impl Agent {
 
         // Start WebSocket connection
         info!("Connecting to server: {}", self.config.connection.url);
-        self.websocket_client.run(on_command, get_cpu_usage).await?;
+        let access_token = self.get_access_token().await;
+        self.websocket_client.run(on_command, get_cpu_usage, access_token).await?;
 
         Ok(())
     }

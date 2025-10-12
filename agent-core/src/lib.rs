@@ -4,6 +4,7 @@
 //! Provides WebSocket connectivity, system monitoring, and command execution.
 
 pub mod agent;
+pub mod auth;
 pub mod commands;
 pub mod config;
 pub mod system;
