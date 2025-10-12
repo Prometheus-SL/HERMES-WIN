@@ -177,16 +177,14 @@ impl CredentialManager {
         
         let tokens: StoredTokens = serde_json::from_str(&token_string)?;
         
-        // Check if tokens are expired
+        // Check if tokens are expired; si expiraron, devolvemos igualmente para permitir refresh automático
         if let Some(expires_at) = tokens.expires_at {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-                
             if now >= expires_at {
-                warn!("Stored tokens have expired");
-                return Err(anyhow::anyhow!("Stored tokens have expired"));
+                warn!("Stored tokens have expired; will require refresh");
             }
         }
         

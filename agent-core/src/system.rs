@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use tracing::debug;
 use uuid::Uuid;
+use std::fs;
+use std::path::PathBuf;
 
 /// System information snapshot
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,10 +43,9 @@ impl SystemMonitor {
         let mut system = System::new_all();
         system.refresh_all();
 
-        Self {
-            system,
-            agent_id: Uuid::new_v4().to_string(),
-        }
+        let agent_id = Self::load_or_create_persistent_agent_id();
+
+        Self { system, agent_id }
     }
 
     /// Get the agent ID
@@ -189,5 +190,44 @@ impl CpuUpdateMessage {
             cpu_usage,
             timestamp,
         }
+    }
+}
+
+impl SystemMonitor {
+    /// Try to load a persistent agent ID from the user's config dir; if it doesn't exist, create and persist one.
+    fn load_or_create_persistent_agent_id() -> String {
+        // Resolve config dir, e.g., %APPDATA%/HERMES-WIN
+        let base_dir = match dirs::config_dir() {
+            Some(mut p) => {
+                p.push("HERMES-WIN");
+                p
+            }
+            None => {
+                // Fallback: current directory
+                PathBuf::from(".")
+            }
+        };
+
+        // Ensure directory exists
+        if let Err(e) = fs::create_dir_all(&base_dir) {
+            debug!("Could not ensure config dir exists: {}", e);
+        }
+
+        let agent_id_path = base_dir.join("agent_id");
+
+        // If exists, read and sanitize
+        if let Ok(existing) = fs::read_to_string(&agent_id_path) {
+            let trimmed = existing.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+
+        // Create a new one and persist
+        let new_id = Uuid::new_v4().to_string();
+        if let Err(e) = fs::write(&agent_id_path, &new_id) {
+            debug!("Failed to write persistent agent_id: {}", e);
+        }
+        new_id
     }
 }

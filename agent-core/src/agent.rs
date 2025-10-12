@@ -88,7 +88,7 @@ impl Agent {
 
     /// Send data to the server via HTTP with authentication
     pub async fn send_data_http(&self, data: serde_json::Value, data_type: &str, priority: &str, tags: Vec<String>) -> crate::Result<()> {
-        let auth_manager = self.auth_manager.lock().await;
+        let mut auth_manager = self.auth_manager.lock().await;
         let agent_id = self.agent_id().await;
         
         let data_request = crate::auth::AgentDataRequest {

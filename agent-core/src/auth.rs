@@ -89,14 +89,31 @@ impl AuthManager {
 
     /// Perform agent login and get JWT tokens
     pub async fn login(&mut self) -> Result<TokenPair> {
-        // First try to load existing valid tokens
-        if let Ok(stored_tokens) = self.credential_manager.load_tokens() {
-            info!("Using stored authentication tokens");
-            self.current_tokens = Some(stored_tokens.clone());
-            return Ok(TokenPair {
-                access_token: stored_tokens.access_token,
-                refresh_token: stored_tokens.refresh_token,
-            });
+        // First try to load existing tokens (even if expired; we'll attempt refresh)
+        if let Ok(mut stored_tokens) = self.credential_manager.load_tokens() {
+            info!("Using stored authentication tokens (may refresh)");
+            // If expired or near expiry, try to refresh using refresh token
+            if Self::is_expired(stored_tokens.expires_at) {
+                match self.refresh_tokens(&stored_tokens.refresh_token).await {
+                    Ok(new_tokens) => {
+                        stored_tokens.access_token = new_tokens.access_token.clone();
+                        stored_tokens.refresh_token = new_tokens.refresh_token.clone();
+                        stored_tokens.expires_at = Self::compute_expiry(Some(3600));
+                        self.credential_manager.store_tokens(&stored_tokens)?;
+                        self.current_tokens = Some(stored_tokens.clone());
+                        return Ok(new_tokens);
+                    }
+                    Err(e) => {
+                        warn!("Stored tokens expired and refresh failed: {}. Will attempt full login.", e);
+                    }
+                }
+            } else {
+                self.current_tokens = Some(stored_tokens.clone());
+                return Ok(TokenPair {
+                    access_token: stored_tokens.access_token,
+                    refresh_token: stored_tokens.refresh_token,
+                });
+            }
         }
 
         // Load credentials from secure storage
@@ -139,12 +156,7 @@ impl AuthManager {
         let stored_tokens = StoredTokens {
             access_token: login_response.data.tokens.access_token.clone(),
             refresh_token: login_response.data.tokens.refresh_token.clone(),
-            expires_at: Some(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() + 3600, // 1 hour expiry
-            ),
+            expires_at: Self::compute_expiry(Some(3600)),
         };
         
         self.credential_manager.store_tokens(&stored_tokens)?;
@@ -157,7 +169,7 @@ impl AuthManager {
     }
 
     /// Send data to the server with authentication
-    pub async fn send_data(&self, data_request: AgentDataRequest) -> Result<()> {
+    pub async fn send_data(&mut self, data_request: AgentDataRequest) -> Result<()> {
         let access_token = self
             .current_tokens
             .as_ref()
@@ -183,8 +195,34 @@ impl AuthManager {
             
             // If we get 401, the token might be expired
             if status == 401 {
-                warn!("Authentication failed, token might be expired");
-                return Err(anyhow::anyhow!("Authentication failed: {}", error_text));
+                warn!("Authentication failed (401), attempting token refresh and retry...");
+                if let Err(e) = self.try_refresh_and_store().await {
+                    error!("Token refresh failed: {}", e);
+                    return Err(anyhow::anyhow!("Authentication failed after refresh attempt: {}", error_text));
+                }
+                // Retry once with new token
+                let new_token = self
+                    .current_tokens
+                    .as_ref()
+                    .map(|t| &t.access_token)
+                    .ok_or_else(|| anyhow::anyhow!("No access token available after refresh"))?;
+
+                let retry = self
+                    .client
+                    .post(&data_url)
+                    .header("Authorization", format!("Bearer {}", new_token))
+                    .header("Content-Type", "application/json")
+                    .header("x-agent-id", &self.agent_id)
+                    .json(&data_request)
+                    .send()
+                    .await?;
+                if !retry.status().is_success() {
+                    let st = retry.status();
+                    let body = retry.text().await.unwrap_or_default();
+                    return Err(anyhow::anyhow!("Data send failed after refresh with status {}: {}", st, body));
+                }
+                debug!("Data sent successfully after token refresh");
+                return Ok(());
             }
             
             error!("Data send failed with status {}: {}", status, error_text);
@@ -246,5 +284,65 @@ impl AuthManager {
     /// Check if credentials are already stored
     pub fn has_stored_credentials(&self) -> bool {
         self.credential_manager.has_credentials()
+    }
+
+    /// Determine if the tokens are expired based on timestamp
+    fn is_expired(expires_at: Option<u64>) -> bool {
+        if let Some(ts) = expires_at {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            return now >= ts;
+        }
+        false
+    }
+
+    /// Compute expiry timestamp now + seconds
+    fn compute_expiry(seconds: Option<u64>) -> Option<u64> {
+        seconds.map(|s| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() + s
+        })
+    }
+
+    /// Attempt to refresh tokens using stored refresh token; updates storage and current_tokens
+    async fn try_refresh_and_store(&mut self) -> Result<()> {
+        let mut tokens = self
+            .current_tokens
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("No tokens available to refresh"))?;
+
+        let new_pair = self.refresh_tokens(&tokens.refresh_token).await?;
+        tokens.access_token = new_pair.access_token.clone();
+        tokens.refresh_token = new_pair.refresh_token.clone();
+        tokens.expires_at = Self::compute_expiry(Some(3600));
+        self.credential_manager.store_tokens(&tokens)?;
+        self.current_tokens = Some(tokens);
+        info!("Tokens refreshed and stored successfully");
+        Ok(())
+    }
+
+    /// Call refresh endpoint
+    async fn refresh_tokens(&self, refresh_token: &str) -> Result<TokenPair> {
+        let url = format!("{}/auth/agent/refresh", self.server_url);
+        debug!("Refreshing tokens via: {}", url);
+        let payload = serde_json::json!({ "refreshToken": refresh_token, "agentId": self.agent_id });
+        let res = self.client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await?;
+        if !res.status().is_success() {
+            let status = res.status();
+            let body = res.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("Refresh failed with status {}: {}", status, body));
+        }
+        // Reuse login response shape
+        let data: AgentLoginResponseData = res.json().await?;
+        Ok(data.data.tokens)
     }
 }
