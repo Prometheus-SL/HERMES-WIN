@@ -100,6 +100,7 @@ impl WebSocketClient {
                                 }
                                 Err(e) => {
                                     warn!("Failed to parse command payload: {}", e);
+                                    warn!("Received payload: {}", serde_json::to_string_pretty(&v).unwrap_or_else(|_| format!("{:?}", v)));
                                 }
                             }
                         }
