@@ -31,32 +31,9 @@
 			"group": "build"
 		},
 		{
-			"label": "build workspace",
+			"label": "start workspace",
 			"type": "shell",
-			"command": "cargo build",
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "build workspace",
-			"type": "shell",
-			"command": "cargo build",
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "build workspace",
-			"type": "shell",
-			"command": "cargo build",
-			"isBackground": false,
-			"group": "build"
-		},
-		{
-			"label": "build workspace",
-			"type": "shell",
-			"command": "cargo build",
-			"isBackground": false,
-			"group": "build"
+			"command": "cargo run --bin agent-tray"
 		}
 	]
 }
