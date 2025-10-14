@@ -42,3 +42,10 @@ level = "info"
 log_to_file = true
 # Log file path
 log_file = "agent.log"
+
+[auth]
+# Server URL for authentication (HTTP/HTTPS)
+server_url = "http://localhost:3000"
+# Note: Email and password are now stored securely in Windows Credential Manager
+# Use the credential setup tool to configure your login credentials
+# Access tokens are automatically managed and stored securely

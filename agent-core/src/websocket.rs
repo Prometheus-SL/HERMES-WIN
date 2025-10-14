@@ -10,7 +10,7 @@ use tracing::{debug, error, info, warn};
 use crate::commands::{CommandResponse, IncomingCommand};
 use crate::config::ConnectionConfig;
 use crate::media::MediaMonitor;
-use crate::system::RegistrationMessage;
+use crate::system::{RegistrationMessage, AgentIdentifyMessage};
 
 use rust_socketio::asynchronous::{Client, ClientBuilder};
 use rust_socketio::{Payload, TransportType};
@@ -28,7 +28,7 @@ impl WebSocketClient {
     }
 
     /// Connect to the Socket.IO server and handle communication
-    pub async fn run<F, G>(&self, mut on_command: F, mut get_cpu_usage: G) -> crate::Result<()>
+    pub async fn run<F, G>(&self, mut on_command: F, mut get_cpu_usage: G, access_token: Option<String>) -> crate::Result<()>
     where
         F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
         G: FnMut() -> f32 + Send + Sync,
@@ -36,7 +36,7 @@ impl WebSocketClient {
         // La librería de Socket.IO soporta reconexión automática, pero mantenemos un bucle externo por si falla la construcción del cliente
         loop {
             match self
-                .connect_and_run(&mut on_command, &mut get_cpu_usage)
+                .connect_and_run(&mut on_command, &mut get_cpu_usage, access_token.clone())
                 .await
             {
                 Ok(_) => {
@@ -62,6 +62,7 @@ impl WebSocketClient {
         &self,
         on_command: &mut F,
         get_cpu_usage: &mut G,
+        access_token: Option<String>,
     ) -> crate::Result<()>
     where
         F: FnMut(IncomingCommand) -> tokio::task::JoinHandle<CommandResponse> + Send + Sync,
@@ -99,6 +100,7 @@ impl WebSocketClient {
                                 }
                                 Err(e) => {
                                     warn!("Failed to parse command payload: {}", e);
+                                    warn!("Received payload: {}", serde_json::to_string_pretty(&v).unwrap_or_else(|_| format!("{:?}", v)));
                                 }
                             }
                         }
@@ -119,19 +121,40 @@ impl WebSocketClient {
         // Si la URL incluye path, úsalo como namespace
         let (address, namespace) = self.socketio_address_and_namespace(&self.config.url)?;
 
-        // Preparar registro para emitirlo al abrir conexión
+        // Preparar mensajes para emitir al abrir conexión
         let registration_value =
             serde_json::to_value(&RegistrationMessage::new(system_info.clone()))
                 .map_err(|e| anyhow::anyhow!("Failed to serialize registration message: {}", e))?;
+        
+        // Preparar mensaje de identificación con token si está disponible
+        let identify_value = if let Some(token) = access_token.clone() {
+            Some(serde_json::to_value(&AgentIdentifyMessage::new(agent_id.clone(), token))
+                .map_err(|e| anyhow::anyhow!("Failed to serialize identify message: {}", e))?)
+        } else {
+            None
+        };
+        
         let reg_agent_id = agent_id.clone();
 
         let mut builder = ClientBuilder::new(address)
             // Namespace por defecto "/"; si tu server usa "/agent" puedes cambiarlo aquí
             .on("open", move |_p, client| {
                 let registration_value = registration_value.clone();
+                let identify_value = identify_value.clone();
                 let reg_agent_id = reg_agent_id.clone();
                 async move {
                     info!("Socket.IO open");
+                    
+                    // Primero, enviar identificación con token si está disponible
+                    if let Some(identify_msg) = identify_value {
+                        if let Err(e) = client.emit("identify", identify_msg).await {
+                            error!("Failed to emit identify on open: {}", e);
+                        } else {
+                            info!("Agent identify event emitted with token for agent: {}", reg_agent_id);
+                        }
+                    }
+                    
+                    // Luego, enviar registro tradicional
                     if let Err(e) = client.emit("register", registration_value).await {
                         error!("Failed to emit register on open: {}", e);
                     } else {

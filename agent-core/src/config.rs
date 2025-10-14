@@ -12,6 +12,7 @@ pub struct Config {
     pub security: SecurityConfig,
     pub commands: CommandsConfig,
     pub logging: LoggingConfig,
+    pub auth: AuthConfig,
 }
 
 /// WebSocket connection configuration
@@ -56,6 +57,14 @@ pub struct LoggingConfig {
     pub log_file: String,
 }
 
+/// Authentication configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AuthConfig {
+    pub server_url: String,
+    // Note: email, password, and tokens are now managed securely by CredentialManager
+    // They are not stored in the configuration file for security reasons
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -76,7 +85,7 @@ impl Default for Config {
                 client_key_path: None,
             },
             commands: CommandsConfig {
-                allowed_commands: vec!["volume".to_string(), "open_app".to_string()],
+                allowed_commands: vec!["volume".to_string(), "open_app".to_string(), "sleep".to_string()],
                 allow_volume_control: true,
                 allow_app_launch: true,
                 allowed_apps: vec![],
@@ -85,6 +94,9 @@ impl Default for Config {
                 level: "info".to_string(),
                 log_to_file: true,
                 log_file: "agent.log".to_string(),
+            },
+            auth: AuthConfig {
+                server_url: "http://localhost:3000".to_string(),
             },
         }
     }

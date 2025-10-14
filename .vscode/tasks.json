@@ -22,6 +22,18 @@
 				"$rustc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "build workspace",
+			"type": "shell",
+			"command": "cargo build",
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "start workspace",
+			"type": "shell",
+			"command": "cargo run --bin agent-tray"
 		}
 	]
 }
