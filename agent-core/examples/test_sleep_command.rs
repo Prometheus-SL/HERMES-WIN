@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let suspend_command = agent_core::commands::IncomingCommand {
         command_type: "sleep".to_string(),
         parameters: json!({
-            "type": "suspend"
+            "type": "blocking"  // or "non-blocking"
         }),
         request_id: Some("test-suspend".to_string()),
     };
