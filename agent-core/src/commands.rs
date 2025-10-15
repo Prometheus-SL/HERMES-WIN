@@ -60,6 +60,7 @@ impl CommandExecutor {
             "volume" => self.handle_volume_command(&command.parameters).await,
             "open_app" => self.handle_open_app_command(&command.parameters).await,
             "sleep" => self.handle_sleep_command(&command.parameters).await,
+            "lock_screen" => self.handle_lock_screen_command(&command.parameters).await,
             _ => Err(anyhow::anyhow!("Unknown command: {}", command.command_type)),
         };
 
@@ -190,6 +191,17 @@ impl CommandExecutor {
             }
             _ => Err(anyhow::anyhow!("Unknown sleep type: {}. Use 'suspend' or 'hibernate'", sleep_type)),
         }
+    }
+
+    /// Handle lock screen command
+    async fn handle_lock_screen_command(
+        &self,
+        parameters: &serde_json::Value,
+    ) -> crate::Result<serde_json::Value> {
+        debug!("Handling lock screen command with parameters: {}", parameters);
+
+        self.lock_screen().await?;
+        Ok(serde_json::json!({"action": "lock_screen", "status": "executed"}))
     }
     
 
@@ -451,6 +463,34 @@ impl CommandExecutor {
         {
             Err(anyhow::anyhow!(
                 "System hibernation not available on this platform"
+            ))
+        }
+    }
+
+    /// Lock the screen
+    async fn lock_screen(&self) -> crate::Result<()> {
+        debug!("Locking screen");
+
+        #[cfg(target_os = "windows")]
+        {
+            // Use rundll32 to lock the workstation
+            let output = Command::new("rundll32.exe")
+                .args(["user32.dll,LockWorkStation"])
+                .output()?;
+
+            if !output.status.success() {
+                let error = String::from_utf8_lossy(&output.stderr);
+                return Err(anyhow::anyhow!("Failed to lock screen: {}", error));
+            }
+
+            info!("Screen locked");
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            Err(anyhow::anyhow!(
+                "Screen lock not available on this platform"
             ))
         }
     }

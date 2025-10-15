@@ -85,7 +85,7 @@ impl Default for Config {
                 client_key_path: None,
             },
             commands: CommandsConfig {
-                allowed_commands: vec!["volume".to_string(), "open_app".to_string(), "sleep".to_string()],
+                allowed_commands: vec!["volume".to_string(), "open_app".to_string(), "sleep".to_string(), "lock_screen".to_string()],
                 allow_volume_control: true,
                 allow_app_launch: true,
                 allowed_apps: vec![],
