@@ -13,7 +13,9 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 ctrlc = "3.4"
 
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+
 # TODO: Add proper system tray support
-# [target.'cfg(windows)'.dependencies]
 # tray-icon = "0.18"
 # winit = "0.30"

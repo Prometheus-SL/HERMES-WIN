@@ -82,16 +82,42 @@ The project is organized as a Cargo workspace with three main crates:
    allowed_commands = ["volume", "open_app"]
    ```
 
-4. **Install** as Windows service:
+4. **Install as Windows Service** (Recommended):
+
+   **Option A: Automatic Installer (Easy)**
+   ```cmd
+   # Double-click install-service.bat or run:
+   install-service.bat
+   ```
+   The installer will automatically request administrator privileges and guide you through the process.
+
+   **Option B: Manual Installation**
    ```cmd
    # Run as Administrator
-   agent-service.exe install
+   agent-tray.exe install
+   agent-tray.exe start
    ```
 
-5. **Start** the service:
+5. **Verify Installation**:
    ```cmd
-   net start HermesAgent
+   agent-tray.exe status
    ```
+
+### Alternative Installation Options
+
+**System Tray Application** (for testing):
+```cmd
+agent-tray.exe console
+```
+
+**Original Service** (alternative):
+```cmd
+# Run as Administrator  
+agent-service.exe install
+net start HermesAgent
+```
+
+📖 **For detailed installation instructions, see [SERVICE_INSTALLATION.md](SERVICE_INSTALLATION.md)**
 
 ### Alternative: Running as Tray Application
 
