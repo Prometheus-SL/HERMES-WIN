@@ -40,22 +40,30 @@ fn main() -> anyhow::Result<()> {
                 println!("  restart   - Restart the service");
                 println!("  status    - Show service status");
                 println!("  console   - Run in console mode for testing");
+                println!("  service   - Run as Windows service (requires installation)");
                 println!();
-                println!("Run without arguments to start as Windows service.");
+                println!("Run without arguments to start in console mode.");
                 return Ok(());
             }
         }
     }
 
-    #[cfg(windows)]
-    {
-        // Run as Windows service
-        windows_service::service_dispatcher::start("HermesAgentTray", ffi_service_main)?;
-    }
+    // By default, run in console mode for easier usage
+    // Use 'service' argument to run as Windows service
+    if args.len() > 1 && args[1] == "service" {
+        #[cfg(windows)]
+        {
+            // Run as Windows service
+            windows_service::service_dispatcher::start("HermesAgentTray", ffi_service_main)?;
+        }
 
-    #[cfg(not(windows))]
-    {
-        warn!("Windows service mode is only available on Windows. Running in console mode.");
+        #[cfg(not(windows))]
+        {
+            warn!("Windows service mode is only available on Windows. Running in console mode.");
+            run_console()?;
+        }
+    } else {
+        // Default behavior: run in console mode
         run_console()?;
     }
 
