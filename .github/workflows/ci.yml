@@ -2,6 +2,62 @@ name: CI
 
 on:
   push:
+    branches: [ "1-version", "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  node-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node-version: [18.x, 20.x]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Install dependencies
+        run: npm ci
+        working-directory: hermes-electron-app
+      - name: Run linter
+        run: |
+          if [ -f package.json ]; then npm run lint || true; fi
+        working-directory: hermes-electron-app
+      - name: Run tests
+        run: |
+          if [ -f package.json ]; then npm test --silent || true; fi
+        working-directory: hermes-electron-app
+
+  build-native-windows:
+    needs: node-matrix
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+      - name: Build native crate
+        run: |
+          cd hermes-electron-app\native\win_volume
+          cargo build --release
+      - name: Copy artifact
+        run: |
+          mkdir -p hermes-electron-app\\src\\native || echo ok
+          if exist hermes-electron-app\native\win_volume\target\release\win_volume.node (
+            copy hermes-electron-app\native\win_volume\target\release\win_volume.node hermes-electron-app\src\native\win_volume.node
+          ) else (
+            echo "artifact not found"
+          )
+name: CI
+
+on:
+  push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]

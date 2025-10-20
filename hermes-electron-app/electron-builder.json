@@ -1,0 +1,50 @@
+{
+  "appId": "com.example.hermes",
+  "productName": "Hermes Electron App",
+  "copyright": "Copyright © 2023 Your Name",
+  "license": "GPL-2.0-or-later",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*",
+    "package.json",
+    "LICENSE"
+  ],
+  "extraResources": [
+    {
+      "from": "src/native",
+      "to": "native",
+      "filter": ["**/*"]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.utilities",
+    "target": [
+      "dmg",
+      "zip"
+    ]
+  },
+  "win": {
+    "target": [
+      "nsis",
+      "zip"
+    ],
+    "icon": "src/assets/icon.ico"
+  },
+  "linux": {
+    "target": [
+      "AppImage",
+      "deb"
+    ],
+    "icon": "src/assets/icon.png"
+  },
+  "build": {
+    "asar": true,
+    "publish": {
+      "provider": "generic",
+      "url": "https://your-download-url.com"
+    }
+  }
+}
