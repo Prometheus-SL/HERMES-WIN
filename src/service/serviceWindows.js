@@ -1,16 +1,70 @@
 // Utility to install/uninstall the Node agent as a Windows service using node-windows
 const Service = require('node-windows').Service;
+const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
 const SERVICE_NAME = 'HermesNodeAgent';
+const PROGRAM_DATA_ROOT = path.join(
+  process.env.PROGRAMDATA || 'C:\\ProgramData',
+  'HERMES-WIN'
+);
+
+function resolveServiceScript() {
+  const resourcesPath = process.resourcesPath;
+  const packagedCandidates = resourcesPath
+    ? [
+        path.join(resourcesPath, 'app.asar.unpacked', 'src', 'service', 'agent.js'),
+        path.join(resourcesPath, 'app.asar', 'src', 'service', 'agent.js'),
+        path.join(resourcesPath, 'src', 'service', 'agent.js'),
+      ]
+    : [];
+
+  return (
+    packagedCandidates.find((candidate) => fs.existsSync(candidate)) ||
+    path.join(__dirname, 'agent.js')
+  );
+}
+
+function resolveServiceWorkingDirectory() {
+  if (process.resourcesPath && fs.existsSync(process.resourcesPath)) {
+    return process.resourcesPath;
+  }
+
+  return process.cwd();
+}
+
+function resolveServiceBaseDirectory() {
+  if (!process.resourcesPath || /node(\.exe)?$/i.test(process.execPath || '')) {
+    return path.dirname(resolveServiceScript());
+  }
+
+  return PROGRAM_DATA_ROOT;
+}
 
 function createService() {
-  return new Service({
+  const serviceBaseDirectory = resolveServiceBaseDirectory();
+
+  if (!fs.existsSync(serviceBaseDirectory)) {
+    fs.mkdirSync(serviceBaseDirectory, { recursive: true });
+  }
+
+  const svc = new Service({
     name: SERVICE_NAME,
     description: 'HERMES Node Agent service',
-    script: path.join(__dirname, 'agent.js'),
+    script: resolveServiceScript(),
+    execPath: process.execPath,
+    workingDirectory: resolveServiceWorkingDirectory(),
+    env: [
+      {
+        name: 'ELECTRON_RUN_AS_NODE',
+        value: '1',
+      },
+    ],
   });
+
+  svc.directory(serviceBaseDirectory);
+  return svc;
 }
 
 function runPowerShell(command) {

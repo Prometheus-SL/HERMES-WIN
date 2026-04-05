@@ -1,50 +1,57 @@
 {
-  "appId": "com.example.hermes",
-  "productName": "Hermes Electron App",
-  "copyright": "Copyright © 2023 Your Name",
-  "license": "GPL-2.0-or-later",
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.prometheus.hermeswin",
+  "productName": "HERMES WIN",
+  "artifactName": "HERMES-WIN-${version}-${arch}.${ext}",
+  "copyright": "Copyright (c) Prometheus SL",
   "directories": {
-    "output": "dist"
+    "output": "release"
   },
   "files": [
     "dist/**/*",
     "src/**/*",
+    "!src/service/daemon/*.log",
     "package.json",
+    "README.md",
+    "CLIENT_QUICKSTART.md",
     "LICENSE"
   ],
   "extraResources": [
     {
       "from": "src/native",
       "to": "native",
-      "filter": ["**/*"]
+      "filter": [
+        "**/*"
+      ]
     }
   ],
-  "mac": {
-    "category": "public.app-category.utilities",
-    "target": [
-      "dmg",
-      "zip"
-    ]
-  },
+  "asar": true,
+  "asarUnpack": [
+    "src/service/**/*.js",
+    "src/native/**/*.node"
+  ],
   "win": {
     "target": [
-      "nsis",
-      "zip"
-    ],
-    "icon": "src/assets/icon.ico"
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
   },
-  "linux": {
-    "target": [
-      "AppImage",
-      "deb"
-    ],
-    "icon": "src/assets/icon.png"
-  },
-  "build": {
-    "asar": true,
-    "publish": {
-      "provider": "generic",
-      "url": "https://your-download-url.com"
-    }
+  "nsis": {
+    "artifactName": "HERMES-WIN-Setup-${version}.${ext}",
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
   }
 }

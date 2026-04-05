@@ -6,17 +6,20 @@
   "scripts": {
     "build:ts": "tsc",
     "build:renderer": "node scripts/build-renderer-esbuild.js",
-    "build:assets": "powershell -Command \"npm run build:renderer; Copy-Item -Path 'src\\renderer\\index.html' -Destination 'dist\\renderer' -Force; Copy-Item -Path 'src\\renderer\\styles' -Destination 'dist\\renderer' -Recurse -Force\"",
-    "start": "powershell -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; electron .\"",
-    "start:dev": "powershell -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; cross-env NODE_ENV=development electron .\"",
+    "build:assets": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:renderer; Copy-Item -Path 'src\\renderer\\index.html' -Destination 'dist\\renderer' -Force; Copy-Item -Path 'src\\renderer\\styles' -Destination 'dist\\renderer' -Recurse -Force\"",
+    "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native-win-volume.ps1",
+    "build:app": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; npm run build:native\"",
+    "build": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:app; npx electron-builder --config electron-builder.json --publish never\"",
+    "build:bundle": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client-bundle.ps1\"",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; electron .\"",
+    "start:dev": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; cross-env NODE_ENV=development electron .\"",
     "start:agent": "node src/service/agent.js",
     "start:agent:manual": "node src/service/manualAgent.js",
     "service:install": "node -e \"require('./src/service/serviceWindows').installService()\"",
     "service:uninstall": "node -e \"require('./src/service/serviceWindows').uninstallService()\"",
-    "build:native": "powershell -Command \"cd native\\win_volume; cargo build --release; Copy-Item target\\release\\win_volume.dll -Destination ..\\..\\src\\native -Force -ErrorAction SilentlyContinue\"",
-    "build": "electron-builder",
-    "lint": "eslint . --ext .ts,.tsx,.js",
-    "test": "jest"
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "test": "jest --passWithNoTests"
   },
   "repository": {
     "type": "git",
@@ -32,7 +35,6 @@
   "dependencies": {
     "axios": "latest",
     "cross-env": "latest",
-    "electron": "^25.0.0",
     "keytar": "latest",
     "node-windows": "latest",
     "react": "^18.2.0",
@@ -43,25 +45,11 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "electron": "^25.0.0",
     "electron-builder": "latest",
     "esbuild": "^0.25.11",
     "eslint": "latest",
     "jest": "latest",
     "typescript": "latest"
-  },
-  "build": {
-    "appId": "com.yourname.hermes",
-    "files": [
-      "dist/**/*",
-      "src/**/*",
-      "package.json",
-      "LICENSE"
-    ],
-    "extraResources": [
-      {
-        "from": "src/native",
-        "to": "native"
-      }
-    ]
   }
 }

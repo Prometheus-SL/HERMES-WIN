@@ -47,6 +47,16 @@ Notes:
 - `npm run start:agent` runs the shared runtime directly in service mode.
 - `npm run service:install` installs the Windows service `HermesNodeAgent`.
 
+## Release artifacts
+
+The automated workflows generate three user-facing outputs:
+
+- `HERMES-WIN-Setup-<version>.exe`: recommended installer for end users.
+- `HERMES-WIN-<version>-x64.zip`: packaged application zip for manual deployments or support.
+- `HERMES-WIN-client-bundle-<version>.zip`: delivery bundle with binaries, quick-start guide, and checksums.
+
+The client-facing installation steps live in `CLIENT_QUICKSTART.md` and are bundled automatically in release builds.
+
 ## Control panel
 
 The Electron UI now acts as the control plane for:

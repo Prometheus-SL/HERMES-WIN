@@ -1,8 +1,31 @@
 const path = require('path');
 let native = null;
-try {
-    native = require(path.join(__dirname, '..', '..', 'native', 'win_volume', 'target', 'release', 'win_volume.node'));
-} catch (e) {
+
+function getNativeCandidates() {
+    const candidates = [
+        path.join(__dirname, '..', '..', 'native', 'win_volume', 'target', 'release', 'win_volume.node'),
+    ];
+
+    if (process.resourcesPath) {
+        candidates.push(
+            path.join(process.resourcesPath, 'native', 'win_volume', 'target', 'release', 'win_volume.node'),
+            path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'native', 'win_volume', 'target', 'release', 'win_volume.node')
+        );
+    }
+
+    return candidates;
+}
+
+for (const candidate of getNativeCandidates()) {
+    try {
+        native = require(candidate);
+        break;
+    } catch (_error) {
+        // Try the next packaged/native location.
+    }
+}
+
+if (!native) {
     try {
         native = require('win_volume');
     } catch (err) {
