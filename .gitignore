@@ -24,3 +24,6 @@ target
 agent.log
 *.log
 ToDo.md
+
+node_modules/
+dist/

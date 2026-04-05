@@ -1,0 +1,67 @@
+{
+  "name": "hermes-electron-app",
+  "version": "1.0.0",
+  "description": "HERMES cross-platform Electron UI + Node agent",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build:ts": "tsc",
+    "build:renderer": "node scripts/build-renderer-esbuild.js",
+    "build:assets": "powershell -Command \"npm run build:renderer; Copy-Item -Path 'src\\renderer\\index.html' -Destination 'dist\\renderer' -Force; Copy-Item -Path 'src\\renderer\\styles' -Destination 'dist\\renderer' -Recurse -Force\"",
+    "start": "powershell -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; electron .\"",
+    "start:dev": "powershell -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; cross-env NODE_ENV=development electron .\"",
+    "start:agent": "node src/service/agent.js",
+    "start:agent:manual": "node src/service/manualAgent.js",
+    "service:install": "node -e \"require('./src/service/serviceWindows').installService()\"",
+    "service:uninstall": "node -e \"require('./src/service/serviceWindows').uninstallService()\"",
+    "build:native": "powershell -Command \"cd native\\win_volume; cargo build --release; Copy-Item target\\release\\win_volume.dll -Destination ..\\..\\src\\native -Force -ErrorAction SilentlyContinue\"",
+    "build": "electron-builder",
+    "lint": "eslint . --ext .ts,.tsx,.js",
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/hermes-electron-app.git"
+  },
+  "keywords": [
+    "electron",
+    "cross-platform",
+    "native-bindings"
+  ],
+  "author": "Your Name",
+  "license": "GPL-2.0-or-later",
+  "dependencies": {
+    "axios": "latest",
+    "cross-env": "latest",
+    "electron": "^25.0.0",
+    "keytar": "latest",
+    "node-windows": "latest",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron-builder": "latest",
+    "esbuild": "^0.25.11",
+    "eslint": "latest",
+    "jest": "latest",
+    "typescript": "latest"
+  },
+  "build": {
+    "appId": "com.yourname.hermes",
+    "files": [
+      "dist/**/*",
+      "src/**/*",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "src/native",
+        "to": "native"
+      }
+    ]
+  }
+}

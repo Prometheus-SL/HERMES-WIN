@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "1-version", "main" ]
+    branches: ["1-version", "main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   node-matrix:
@@ -54,58 +54,3 @@ jobs:
           ) else (
             echo "artifact not found"
           )
-name: CI
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-
-env:
-  CARGO_TERM_COLOR: always
-
-jobs:
-  build-windows:
-    name: Build Windows x64
-    runs-on: windows-latest
-    needs: [security-audit]
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Build release
-        run: cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Upload Windows Service binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: hermes-agent-service-windows-x64
-          path: target/x86_64-pc-windows-msvc/release/agent-service.exe
-
-      - name: Upload Windows Tray binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: hermes-agent-tray-windows-x64
-          path: target/x86_64-pc-windows-msvc/release/agent-tray.exe
-
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-audit
-        run: cargo install cargo-audit
-
-      - name: Run cargo audit
-        run: cargo audit
