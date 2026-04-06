@@ -2,7 +2,7 @@
 	<id>hermesnodeagent.exe</id>
 	<name>HermesNodeAgent</name>
 	<description>HERMES Node Agent service</description>
-	<executable>C:\Program Files\nodejs\node.exe</executable>
+	<executable>C:\Users\migue\OneDrive\Documents\GitHub\PROMETEO\HERMES-WIN\node_modules\electron\dist\electron.exe</executable>
 	<argument>--harmony</argument>
 	<argument>C:\Users\migue\OneDrive\Documents\GitHub\PROMETEO\HERMES-WIN\node_modules\node-windows\lib\wrapper.js</argument>
 	<argument>--file</argument>
@@ -22,6 +22,7 @@
 	<argument>undefined</argument>
 	<logmode>rotate</logmode>
 	<stoptimeout>30sec</stoptimeout>
+	<env name="ELECTRON_RUN_AS_NODE" value="1"/>
 	<serviceaccount>
 		<domain>VISION</domain>
 		<user>LocalSystem</user>

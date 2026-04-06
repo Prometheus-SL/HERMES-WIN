@@ -3,9 +3,11 @@ const { io } = require('socket.io-client');
 const logger = require('./logger');
 const AuthManager = require('./auth');
 const CommandExecutor = require('./commandExecutor');
+const { getPreferredSocketUrl } = require('./serverUrl');
 const {
   ensureRuntimeState,
   loadRuntimeState,
+  saveRuntimeState,
 } = require('./runtimeState');
 const { collectSystemSnapshot } = require('./systemSnapshot');
 
@@ -62,7 +64,11 @@ class AgentRuntime extends EventEmitter {
       ...patch,
       mode: this.mode,
     };
-    this.emit('status', this.getStatus());
+    const publicStatus = this.getStatus();
+    saveRuntimeState({
+      [`${this.mode}Runtime`]: publicStatus,
+    });
+    this.emit('status', publicStatus);
   }
 
   async start() {
@@ -142,11 +148,13 @@ class AgentRuntime extends EventEmitter {
   }
 
   async _connectSocket(serverUrl, agentId, token) {
+    const socketUrl = getPreferredSocketUrl(serverUrl);
     this._setStatus({
       lifecycle: 'connecting',
       connected: false,
       authenticated: true,
       lastError: null,
+      serverUrl: socketUrl,
     });
 
     if (this.socket) {
@@ -159,7 +167,7 @@ class AgentRuntime extends EventEmitter {
       this.socket = null;
     }
 
-    const socket = io(serverUrl, {
+    const socket = io(socketUrl, {
       auth: { token },
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -173,7 +181,7 @@ class AgentRuntime extends EventEmitter {
       const latestState = loadRuntimeState();
       const identifyToken = (await this.auth.ensureValidToken()) || token;
 
-      logger.info(`Runtime connected (${this.mode}) to ${serverUrl}`);
+      logger.info(`Runtime connected (${this.mode}) to ${socketUrl}`);
       socket.emit('identify', {
         type: 'agent',
         agentId: latestState.agentId || agentId,
@@ -329,6 +337,7 @@ class AgentRuntime extends EventEmitter {
       this._setStatus({
         lastSnapshotAt: snapshot.sampledAt,
         lastError: null,
+        serverUrl: getPreferredSocketUrl(loadRuntimeState().serverUrl || ''),
       });
       return snapshot;
     } catch (error) {

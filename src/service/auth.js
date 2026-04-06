@@ -1,5 +1,6 @@
 const axios = require('axios');
 const credentials = require('./credentials');
+const { normalizeServerUrl } = require('./serverUrl');
 const {
     loadRuntimeState,
     saveRuntimeState,
@@ -36,7 +37,9 @@ class AuthManager {
 
     async loginWithCredentials({ email, password, serverUrl }) {
         const currentState = loadRuntimeState();
-        const nextServerUrl = String(serverUrl || this.serverUrl || currentState.serverUrl || '').replace(/\/$/, '');
+        const nextServerUrl = normalizeServerUrl(
+            serverUrl || this.serverUrl || currentState.serverUrl || ''
+        );
         const nextAgentId = this.agentId || currentState.agentId;
 
         if (!nextServerUrl) {
@@ -75,7 +78,7 @@ class AuthManager {
 
     async refreshTokens(refreshToken) {
         const state = loadRuntimeState();
-        const server = (this.serverUrl || state.serverUrl || '').replace(/\/$/, '');
+        const server = normalizeServerUrl(this.serverUrl || state.serverUrl || '');
         if (!server) {
             throw new Error('Missing server URL');
         }
@@ -138,8 +141,8 @@ class AuthManager {
     async sendData(path, data) {
         const token = await this.ensureValidToken();
         if (!token) throw new Error('No access token');
-        const server = this.serverUrl || loadRuntimeState().serverUrl;
-        const url = `${String(server || '').replace(/\/$/, '')}${path}`;
+        const server = normalizeServerUrl(this.serverUrl || loadRuntimeState().serverUrl || '');
+        const url = `${server}${path}`;
         return axios.post(url, data, { headers: { Authorization: `Bearer ${token}` } });
     }
 }

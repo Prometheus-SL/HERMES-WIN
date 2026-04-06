@@ -105,24 +105,32 @@ class AgentManager extends EventEmitter {
 
     async getStatusSnapshot() {
         const service = await this._safeGetServiceStatus();
+        const runtimeState = getPublicRuntimeState();
         return {
-            runtime: this.manualRuntime.getStatus(),
-            runtimeState: getPublicRuntimeState(),
+            runtime: this._selectRuntimeStatus(service, runtimeState),
+            runtimeState,
             service,
             hasStoredCredentials: await credentials.hasCredentials(),
         };
     }
 
     getStatusSnapshotSync() {
+        const service = {
+            installed: false,
+            running: false,
+            status: 'unknown',
+        };
+        const runtimeState = getPublicRuntimeState();
         return {
-            runtime: this.manualRuntime.getStatus(),
-            runtimeState: getPublicRuntimeState(),
+            runtime: this._selectRuntimeStatus(service, runtimeState),
+            runtimeState,
         };
     }
 
     async _syncManualRuntimeWithService() {
         const serviceStatus = await this._safeGetServiceStatus();
         const runtimeState = loadRuntimeState();
+        const publicRuntimeState = getPublicRuntimeState();
 
         if (serviceStatus.installed) {
             if (this.manualRuntime.running) {
@@ -130,8 +138,8 @@ class AgentManager extends EventEmitter {
                 await this.manualRuntime.stop();
             }
             this.emit('status', {
-                runtime: this.manualRuntime.getStatus(),
-                runtimeState: getPublicRuntimeState(),
+                runtime: this._selectRuntimeStatus(serviceStatus, publicRuntimeState),
+                runtimeState: publicRuntimeState,
                 service: serviceStatus,
             });
             return;
@@ -163,6 +171,36 @@ class AgentManager extends EventEmitter {
                 error: error.message || String(error),
             };
         }
+    }
+
+    _selectRuntimeStatus(serviceStatus, runtimeState) {
+        const manualRuntime = runtimeState?.manualRuntime;
+        const serviceRuntime = runtimeState?.serviceRuntime;
+
+        if (serviceStatus?.installed) {
+            if (serviceRuntime) {
+                return serviceRuntime;
+            }
+
+            return {
+                ...this.manualRuntime.getStatus(),
+                mode: 'service',
+                lifecycle: serviceStatus.running ? 'running' : 'stopped',
+                connected: false,
+                authenticated: Boolean(
+                    runtimeState?.hasAccessToken || runtimeState?.hasRefreshToken
+                ),
+                agentId: runtimeState?.agentId || this.manualRuntime.getStatus().agentId,
+                serverUrl: runtimeState?.serverUrl || this.manualRuntime.getStatus().serverUrl,
+                monitoringIntervalMs:
+                    runtimeState?.monitoringIntervalMs ||
+                    this.manualRuntime.getStatus().monitoringIntervalMs,
+                lastAuthAt: runtimeState?.lastAuthAt || null,
+                lastError: null,
+            };
+        }
+
+        return manualRuntime || this.manualRuntime.getStatus();
     }
 }
 

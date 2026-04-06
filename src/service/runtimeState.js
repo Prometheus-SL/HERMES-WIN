@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { normalizeServerUrl } = require('./serverUrl');
 
 const DEFAULT_MONITORING_INTERVAL_MS = 30000;
 const PROGRAM_DATA_DIR = path.join(
@@ -31,15 +32,26 @@ function buildDefaultState() {
 function normalizeState(candidate = {}) {
   const defaults = buildDefaultState();
   const monitoringIntervalMs = Number(candidate.monitoringIntervalMs);
+  const normalizedManualRuntime =
+    candidate.manualRuntime && typeof candidate.manualRuntime === 'object'
+      ? { ...candidate.manualRuntime }
+      : null;
+  const normalizedServiceRuntime =
+    candidate.serviceRuntime && typeof candidate.serviceRuntime === 'object'
+      ? { ...candidate.serviceRuntime }
+      : null;
 
   return {
     ...defaults,
     ...candidate,
     agentId: String(candidate.agentId || defaults.agentId),
+    serverUrl: normalizeServerUrl(candidate.serverUrl || ''),
     monitoringIntervalMs:
       Number.isFinite(monitoringIntervalMs) && monitoringIntervalMs > 0
         ? monitoringIntervalMs
         : defaults.monitoringIntervalMs,
+    manualRuntime: normalizedManualRuntime,
+    serviceRuntime: normalizedServiceRuntime,
   };
 }
 
@@ -101,6 +113,8 @@ function getPublicRuntimeState() {
     lastAuthAt: state.lastAuthAt || null,
     hasAccessToken: Boolean(state.accessToken),
     hasRefreshToken: Boolean(state.refreshToken),
+    manualRuntime: state.manualRuntime || null,
+    serviceRuntime: state.serviceRuntime || null,
   };
 }
 

@@ -1,6 +1,7 @@
 const keytar = require('keytar');
 const fs = require('fs');
 const path = require('path');
+const { normalizeServerUrl } = require('./serverUrl');
 
 const SERVICE = 'HERMES-WIN-Agent';
 const CONFIG_DIR = path.join(require('os').homedir(), '.hermes');
@@ -13,12 +14,13 @@ async function ensureConfigDir() {
 }
 
 async function storeCredentials({ email, password, server_url }) {
+    const normalizedServerUrl = normalizeServerUrl(server_url);
     await keytar.setPassword(SERVICE, 'email', email);
     await keytar.setPassword(SERVICE, 'password', password);
-    await keytar.setPassword(SERVICE, 'server_url', server_url);
+    await keytar.setPassword(SERVICE, 'server_url', normalizedServerUrl);
     // also write a small backup without password
     await ensureConfigDir();
-    const backup = { email, server_url, note: 'Password stored in system keychain' };
+    const backup = { email, server_url: normalizedServerUrl, note: 'Password stored in system keychain' };
     fs.writeFileSync(path.join(CONFIG_DIR, 'user_config.json'), JSON.stringify(backup, null, 2));
 }
 
@@ -29,7 +31,7 @@ async function loadCredentials() {
     if (!email || !password || !server_url) {
         throw new Error('No stored credentials found');
     }
-    return { email, password, server_url };
+    return { email, password, server_url: normalizeServerUrl(server_url) };
 }
 
 async function storeTokens(tokens) {
