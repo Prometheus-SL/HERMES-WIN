@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./components/App";
-// Styles will be loaded via <link> in index.html
+import "./components/styles.css";
 
 const rootElement = document.getElementById("root");
 

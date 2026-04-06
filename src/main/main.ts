@@ -1,190 +1,230 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import path from 'path';
-const fs = require('fs');
-const AgentManager = require(path.join(__dirname, '..', '..', 'src', 'service', 'agentManager.js'));
+import { app, BrowserWindow, ipcMain } from "electron";
+import path from "path";
+
+const fs = require("fs");
+
+const projectRoot = path.join(__dirname, "..", "..");
+const AgentManager = require(path.join(projectRoot, "src", "service", "agentManager.js"));
+
 let agentManager: any = null;
+let mainWindow: BrowserWindow | null = null;
 
-let mainWindow: BrowserWindow | null;
+function resolveWindowIcon() {
+  const candidates = [
+    path.join(projectRoot, "build", "icon.ico"),
+    path.join(projectRoot, "build", "icon.png"),
+    path.join(app.getAppPath(), "build", "icon.ico"),
+    path.join(app.getAppPath(), "build", "icon.png"),
+  ];
 
-const createWindow = () => {
-    mainWindow = new BrowserWindow({
-        width: 800,
-        height: 600,
-        webPreferences: {
-            preload: path.join(__dirname, '../preload/preload.js'),
-            contextIsolation: true,
-            // enableRemoteModule removed for compatibility with newer Electron
-            nodeIntegration: false,
-        },
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+function getAgentManager() {
+  if (!agentManager) {
+    throw new Error("Agent manager is not ready yet");
+  }
+
+  return agentManager;
+}
+
+function createWindow() {
+  const iconPath = resolveWindowIcon();
+
+  mainWindow = new BrowserWindow({
+    width: 1360,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 720,
+    center: true,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: "#07111f",
+    title: "Prometeo Hermes Console",
+    icon: iconPath,
+    webPreferences: {
+      preload: path.join(__dirname, "../preload/preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const startUrl =
+    process.env.ELECTRON_START_URL ||
+    `file://${path.join(__dirname, "../renderer/index.html")}`;
+
+  mainWindow.loadURL(startUrl);
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show();
+  });
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
+}
+
+app.on("ready", () => {
+  app.setName("Prometeo Hermes");
+  createWindow();
+
+  try {
+    agentManager = new AgentManager();
+    agentManager.on("status", (status: unknown) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("runtime-status-updated", status);
+      }
     });
+    agentManager.start();
+  } catch (error) {
+    console.warn("AgentManager failed to start: " + String(error));
+  }
+});
 
-    const startUrl = process.env.ELECTRON_START_URL || `file://${path.join(__dirname, '../renderer/index.html')}`;
-    mainWindow.loadURL(startUrl);
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
 
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
-};
-
-app.on('ready', () => {
+app.on("activate", () => {
+  if (mainWindow === null) {
     createWindow();
-    try {
-        agentManager = new AgentManager();
-        agentManager.on('status', (status: unknown) => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('runtime-status-updated', status);
-            }
-        });
-        agentManager.start();
-    } catch (e) {
-        console.warn('AgentManager failed to start: ' + String(e));
-    }
+  }
 });
 
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+ipcMain.handle("runtime-login", async (_event, creds) => {
+  try {
+    const status = await getAgentManager().loginAndPersist(creds);
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
+ipcMain.handle("runtime-status", async () => {
+  try {
+    const status = await getAgentManager().getStatusSnapshot();
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('runtime-login', async (_event, creds) => {
-    try {
-        const status = await agentManager.loginAndPersist(creds);
-        return { ok: true, status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("runtime-clear", async () => {
+  try {
+    const status = await getAgentManager().clearCredentials();
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('runtime-status', async () => {
-    try {
-        const status = await agentManager.getStatusSnapshot();
-        return { ok: true, status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("runtime-restart", async () => {
+  try {
+    const status = await getAgentManager().restartRuntime();
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('runtime-clear', async () => {
-    try {
-        const status = await agentManager.clearCredentials();
-        return { ok: true, status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("service-status", async () => {
+  try {
+    const status = await getAgentManager().getStatusSnapshot();
+    return { ok: true, service: status.service };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('runtime-restart', async () => {
-    try {
-        const status = await agentManager.restartRuntime();
-        return { ok: true, status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("service-install", async () => {
+  try {
+    const status = await getAgentManager().installService();
+    return { ok: true, service: status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('service-status', async () => {
-    try {
-        const status = await agentManager.getStatusSnapshot();
-        return { ok: true, service: status.service };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("service-uninstall", async () => {
+  try {
+    const status = await getAgentManager().uninstallService();
+    return { ok: true, service: status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('service-install', async () => {
-    try {
-        const status = await agentManager.installService();
-        return { ok: true, service: status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("service-start", async () => {
+  try {
+    const status = await getAgentManager().startService();
+    return { ok: true, service: status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('service-uninstall', async () => {
-    try {
-        const status = await agentManager.uninstallService();
-        return { ok: true, service: status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("service-stop", async () => {
+  try {
+    const status = await getAgentManager().stopService();
+    return { ok: true, service: status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('service-start', async () => {
-    try {
-        const status = await agentManager.startService();
-        return { ok: true, service: status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("credentials-store", async (_event, creds) => {
+  try {
+    const status = await getAgentManager().loginAndPersist(creds);
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('service-stop', async () => {
-    try {
-        const status = await agentManager.stopService();
-        return { ok: true, service: status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
+ipcMain.handle("credentials-has", async () => {
+  try {
+    const status = await getAgentManager().getStatusSnapshot();
+    return {
+      ok: true,
+      has: Boolean(status.runtimeState?.serverUrl || status.hasStoredCredentials),
+    };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-// Backwards-compatible aliases used by the existing renderer.
-ipcMain.handle('credentials-store', async (_event, creds) => {
-    try {
-        const status = await agentManager.loginAndPersist(creds);
-        return { ok: true, status };
-    } catch (e) {
-        return { ok: false, error: String(e) };
+const logsPath = path.join(projectRoot, "logs", "agent.log");
+
+ipcMain.handle("logs-read", async (_event, maxLines = 500) => {
+  try {
+    if (!fs.existsSync(logsPath)) {
+      return { ok: true, lines: [] };
     }
+
+    const content = fs.readFileSync(logsPath, "utf8");
+    const lines = content.split(/\r?\n/).filter(Boolean);
+    const start = Math.max(0, lines.length - maxLines);
+    return { ok: true, lines: lines.slice(start) };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
 });
 
-ipcMain.handle('credentials-has', async () => {
-    try {
-        const status = await agentManager.getStatusSnapshot();
-        return {
-            ok: true,
-            has: Boolean(status.runtimeState?.serverUrl || status.hasStoredCredentials),
-        };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
-});
-
-// Logs reading + watch support
-const logsPath = path.join(__dirname, '..', '..', 'logs', 'agent.log');
-
-ipcMain.handle('logs-read', async (_event, maxLines = 500) => {
-    try {
-        if (!fs.existsSync(logsPath)) return { ok: true, lines: [] };
-        const content = fs.readFileSync(logsPath, 'utf8');
-        const all = content.split(/\r?\n/).filter(Boolean);
-        const start = Math.max(0, all.length - maxLines);
-        const lines = all.slice(start);
-        return { ok: true, lines };
-    } catch (e) {
-        return { ok: false, error: String(e) };
-    }
-});
-
-// Watch file and notify renderer on changes
 try {
-    fs.watchFile(logsPath, { interval: 1000 }, (curr: any, prev: any) => {
-        if (!mainWindow || curr.mtimeMs === prev.mtimeMs) return;
-        try {
-            const content = fs.readFileSync(logsPath, 'utf8');
-            const lines = content.split(/\r?\n/).filter(Boolean);
-            const payload = lines.slice(-500);
-            mainWindow.webContents.send('logs-updated', payload);
-        } catch (e) {
-            // ignore
-        }
-    });
-} catch (e) {
-    // ignore if cannot watch
+  fs.watchFile(logsPath, { interval: 1000 }, (current: any, previous: any) => {
+    if (!mainWindow || current.mtimeMs === previous.mtimeMs) {
+      return;
+    }
+
+    try {
+      const content = fs.readFileSync(logsPath, "utf8");
+      const lines = content.split(/\r?\n/).filter(Boolean).slice(-500);
+      mainWindow.webContents.send("logs-updated", lines);
+    } catch (_error) {
+      // Ignore log read errors from watcher updates.
+    }
+  });
+} catch (_error) {
+  // Ignore watch failures on first run when the log file does not exist yet.
 }

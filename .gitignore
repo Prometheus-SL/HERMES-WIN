@@ -27,3 +27,6 @@ ToDo.md
 
 node_modules/
 dist/
+release/
+
+.env

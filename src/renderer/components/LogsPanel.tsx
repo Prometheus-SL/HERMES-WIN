@@ -6,6 +6,7 @@ const LogsPanel: React.FC = () => {
 
   useEffect(() => {
     let unsub: (() => void) | null = null;
+
     async function load() {
       setLoading(true);
       try {
@@ -18,34 +19,44 @@ const LogsPanel: React.FC = () => {
             setLines(payload || []);
           });
         }
-      } catch (e) {
+      } catch (_error) {
         // ignore
       } finally {
         setLoading(false);
       }
     }
-    load();
+
+    void load();
     return () => {
       if (unsub) unsub();
     };
   }, []);
 
   return (
-    <div
-      className="logs-panel"
-      style={{
-        maxHeight: 360,
-        overflow: "auto",
-        background: "#111",
-        color: "#eee",
-        padding: 12,
-        fontFamily: "monospace",
-        fontSize: 12,
-      }}
-    >
-      {loading && <div>Loading logs...</div>}
-      {!loading && lines.length === 0 && <div>No logs yet</div>}
-      {!loading && lines.map((l, i) => <div key={i}>{l}</div>)}
+    <div className="logs-panel">
+      {loading ? <div className="logs-panel__empty">Loading logs...</div> : null}
+      {!loading && lines.length === 0 ? (
+        <div className="logs-panel__empty">No logs yet</div>
+      ) : null}
+      {!loading &&
+        lines.map((line, index) => {
+          const tone = /\[ERROR\]/.test(line)
+            ? "error"
+            : /\[WARN\]/.test(line)
+              ? "warn"
+              : /\[INFO\]/.test(line)
+                ? "info"
+                : "neutral";
+
+          return (
+            <div
+              key={`${index}-${line}`}
+              className={`logs-panel__line logs-panel__line--${tone}`}
+            >
+              {line}
+            </div>
+          );
+        })}
     </div>
   );
 };
