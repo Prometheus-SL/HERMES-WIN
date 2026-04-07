@@ -4,7 +4,10 @@ Set-StrictMode -Version Latest
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $releaseDir = Join-Path $projectRoot 'release'
 $packageJsonPath = Join-Path $projectRoot 'package.json'
-$quickstartPath = Join-Path $projectRoot 'CLIENT_QUICKSTART.md'
+$docsDir = Join-Path $projectRoot 'docs'
+$quickstartPath = Join-Path $docsDir 'CLIENT_QUICKSTART.md'
+$consentPath = Join-Path $docsDir 'CONSENT.md'
+$securityPath = Join-Path $docsDir 'SECURITY.md'
 $readmePath = Join-Path $projectRoot 'README.md'
 $licensePath = Join-Path $projectRoot 'LICENSE'
 
@@ -38,6 +41,8 @@ if (-not $artifacts) {
 }
 
 Copy-Item $quickstartPath $bundleDir -Force
+Copy-Item $consentPath $bundleDir -Force
+Copy-Item $securityPath $bundleDir -Force
 Copy-Item $readmePath $bundleDir -Force
 Copy-Item $licensePath $bundleDir -Force
 
@@ -45,7 +50,7 @@ foreach ($artifact in $artifacts) {
   Copy-Item $artifact.FullName $bundleDir -Force
 }
 
-$hashLines = foreach ($artifact in $artifacts) {
+$hashLines = foreach ($artifact in ($artifacts | Sort-Object Name)) {
   $hash = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   "$hash *$($artifact.Name)"
 }

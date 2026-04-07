@@ -12,6 +12,11 @@ if ($env:HERMES_ENABLE_NATIVE_AUDIO -ne '1') {
   return
 }
 
+if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
+  Write-Warning "Rust/Cargo was not found. Hermes will keep using the PowerShell audio path."
+  return
+}
+
 Push-Location $nativeRoot
 try {
   cargo build --release
