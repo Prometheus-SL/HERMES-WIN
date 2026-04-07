@@ -17,6 +17,9 @@ function resolveServiceScript() {
   const resourcesPath = process.resourcesPath;
   const packagedCandidates = resourcesPath
     ? [
+        path.join(resourcesPath, 'app.asar.unpacked', 'dist', 'service', 'agent.js'),
+        path.join(resourcesPath, 'app.asar', 'dist', 'service', 'agent.js'),
+        path.join(resourcesPath, 'dist', 'service', 'agent.js'),
         path.join(resourcesPath, 'app.asar.unpacked', 'src', 'service', 'agent.js'),
         path.join(resourcesPath, 'app.asar', 'src', 'service', 'agent.js'),
         path.join(resourcesPath, 'src', 'service', 'agent.js'),

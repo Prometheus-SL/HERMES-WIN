@@ -49,13 +49,36 @@ type RuntimeStatus = {
 };
 
 type ServiceStatus = {
+  name?: string;
+  internalName?: string;
+  displayName?: string;
+  kind?: string;
+  supported?: boolean;
   installed: boolean;
   running: boolean;
   status: string;
   canStop?: boolean;
+  actions?: {
+    install?: boolean;
+    start?: boolean;
+    stop?: boolean;
+    uninstall?: boolean;
+  };
+  error?: string;
+};
+
+type PlatformCapabilities = {
+  audio?: boolean;
+  audioOutputs?: boolean;
+  sleep?: boolean;
+  hibernate?: boolean;
+  lockScreen?: boolean;
+  daemonControl?: boolean;
 };
 
 type StatusPayload = {
+  platform?: string;
+  capabilities?: PlatformCapabilities;
   runtime?: RuntimeStatus;
   runtimeState?: {
     serverUrl?: string;
@@ -79,6 +102,15 @@ type BadgeTone =
   | "outline";
 
 const EMPTY_STATUS: StatusPayload = {
+  platform: "unknown",
+  capabilities: {
+    audio: false,
+    audioOutputs: false,
+    sleep: false,
+    hibernate: false,
+    lockScreen: false,
+    daemonControl: false,
+  },
   runtime: {
     mode: "manual",
     lifecycle: "idle",
@@ -102,13 +134,29 @@ const EMPTY_STATUS: StatusPayload = {
     hasRefreshToken: false,
   },
   service: {
+    displayName: "Background agent",
+    kind: "manual",
+    supported: false,
     installed: false,
     running: false,
     status: "not-installed",
     canStop: false,
+    actions: {
+      install: false,
+      start: false,
+      stop: false,
+      uninstall: false,
+    },
   },
   hasStoredCredentials: false,
 };
+
+function formatPlatformLabel(platform?: string | null) {
+  if (platform === "win32") return "Windows";
+  if (platform === "linux") return "Linux";
+  if (platform === "darwin") return "macOS";
+  return platform || "Unknown";
+}
 
 function formatRelative(value?: string | null) {
   if (!value) return "Waiting for first event";
@@ -171,6 +219,7 @@ function computeRuntimeProgress(runtime: RuntimeStatus) {
 }
 
 function computeServiceProgress(service: ServiceStatus) {
+  if (service.supported === false) return 100;
   if (service.running) return 100;
   if (service.installed) return 64;
   return 10;
@@ -187,6 +236,7 @@ function toneForLifecycle(
 }
 
 function toneForService(service: ServiceStatus): BadgeTone {
+  if (service.supported === false) return "secondary";
   if (service.running) return "success";
   if (service.installed) return "warning";
   return "outline";
@@ -209,23 +259,32 @@ function getRecommendation(
       tone: "warning" as BadgeTone,
       title: "Complete machine login",
       description:
-        "Store the server URL and credentials once so the desktop app and the Windows service can share the same runtime session.",
+        "Store the server URL and credentials once so the desktop app and the background runtime can share the same session.",
+    };
+  }
+
+  if (service.supported === false) {
+    return {
+      tone: "secondary" as BadgeTone,
+      title: "Manual mode on this platform",
+      description:
+        "Hermes is running without a managed daemon here. The desktop app can still keep the runtime alive while it stays open.",
     };
   }
 
   if (!service.installed) {
     return {
       tone: "default" as BadgeTone,
-      title: "Install the Windows service",
+      title: "Install the background agent",
       description:
-        "This keeps Hermes available when the desktop console is closed and makes the setup more reliable on reboot.",
+        "This keeps Hermes available when the desktop console is closed and makes the setup more reliable after reboot or login.",
     };
   }
 
   if (!service.running) {
     return {
       tone: "warning" as BadgeTone,
-      title: "Start the service",
+      title: "Start the background agent",
       description:
         "The machine is provisioned, but the daemon is currently stopped. Start it to resume background monitoring.",
     };
@@ -236,7 +295,7 @@ function getRecommendation(
       tone: "warning" as BadgeTone,
       title: "Reconnect the runtime",
       description:
-        "The service is active, but the live runtime has not linked back to the server yet. A reconnect usually restores the session.",
+        "The background agent is active, but the live runtime has not linked back to the server yet. A reconnect usually restores the session.",
     };
   }
 
@@ -244,7 +303,7 @@ function getRecommendation(
     tone: "success" as BadgeTone,
     title: "Everything looks healthy",
     description:
-      "The runtime is linked, the session is shared correctly, and the Windows service is ready to keep Hermes online.",
+      "The runtime is linked, the session is shared correctly, and the background agent is ready to keep Hermes online.",
   };
 }
 
@@ -254,7 +313,7 @@ function statusLabel(
   sessionState: SessionState
 ) {
   if (runtime.connected) return "Connected";
-  if (service.running) return "Service active";
+  if (service.running) return "Background agent active";
   if (sessionState === "cached" || sessionState === "ready") return "Session ready";
   return "Setup needed";
 }
@@ -383,6 +442,7 @@ const App: React.FC = () => {
     sessionState,
     needsLogin
   );
+  const platformLabel = formatPlatformLabel(status.platform);
   const isRefreshing = loading || busyAction === "refresh";
   const updateLabel = formatRelative(runtime.lastSnapshotAt || runtimeState.lastAuthAt);
   const serverLabel = compactServerLabel(runtimeState.serverUrl || runtime.serverUrl);
@@ -460,11 +520,11 @@ const App: React.FC = () => {
                 <Badge variant={heroTone} className="hero-panel__status">
                   {statusLabel(runtime, service, sessionState)}
                 </Badge>
-                <h1>Operate Hermes from a calmer, cleaner Windows console.</h1>
+                <h1>Operate Hermes from one cross-platform control room.</h1>
                 <p>
                   Keep the shared session under control, monitor the runtime, and
-                  manage the background service from a layout inspired by the main
-                  Prometeo experience.
+                  manage the background agent from a layout tuned for Windows,
+                  Linux, and macOS.
                 </p>
               </div>
 
@@ -474,12 +534,16 @@ const App: React.FC = () => {
                   Agent {activeAgent}
                 </span>
                 <span className="signal-pill">
-                  <CloudCog className="size-4" />
-                  Server {serverLabel}
+                  <ServerCog className="size-4" />
+                  Platform {platformLabel}
                 </span>
                 <span className="signal-pill">
                   <Zap className="size-4" />
                   Runtime {lifecycleLabel}
+                </span>
+                <span className="signal-pill">
+                  <CloudCog className="size-4" />
+                  Server {serverLabel}
                 </span>
               </div>
 
@@ -539,8 +603,14 @@ const App: React.FC = () => {
                   <strong>{getSessionLabel(sessionState)}</strong>
                 </div>
                 <div className="hero-summary__row">
-                  <span>Service</span>
-                  <strong>{service.running ? "Running" : service.status}</strong>
+                  <span>Background agent</span>
+                  <strong>
+                    {service.supported === false
+                      ? "Manual only"
+                      : service.running
+                        ? "Running"
+                        : service.status}
+                  </strong>
                 </div>
                 <div className="hero-summary__row">
                   <span>Last update</span>
@@ -588,12 +658,20 @@ const App: React.FC = () => {
             />
             <OverviewStat
               icon={ServerCog}
-              label="Windows service"
-              value={service.running ? "Running" : service.status}
+              label="Background agent"
+              value={
+                service.supported === false
+                  ? "Manual only"
+                  : service.running
+                    ? "Running"
+                    : service.status
+              }
               helper={
-                service.installed
-                  ? "Background daemon is available on this machine."
-                  : "Install the service for always-on mode."
+                service.supported === false
+                  ? "This platform currently uses manual runtime mode."
+                  : service.installed
+                    ? "Background daemon is available on this machine."
+                    : "Install the background agent for always-on mode."
               }
               progress={serviceProgress}
             />
@@ -636,8 +714,8 @@ const App: React.FC = () => {
                 <div>
                   <CardTitle>Shared session</CardTitle>
                   <CardDescription>
-                    Credentials are stored once and reused by the app plus the Windows
-                    service.
+                    Credentials are stored once and reused by the app plus the
+                    background agent.
                   </CardDescription>
                 </div>
               </div>
@@ -729,10 +807,10 @@ const App: React.FC = () => {
                   <HardDriveDownload className="size-4" />
                 </span>
                 <div>
-                  <CardTitle>Windows service</CardTitle>
+                  <CardTitle>Background agent</CardTitle>
                   <CardDescription>
                     Install, start, stop, or remove the Hermes daemon without leaving
-                    the desktop console.
+                    the desktop console when this platform supports it.
                   </CardDescription>
                 </div>
               </div>
@@ -740,81 +818,117 @@ const App: React.FC = () => {
             <CardContent className="status-panel__content status-panel__content--spaced">
               <div className="service-banner">
                 <Badge variant={serviceTone}>
-                  {service.running
-                    ? "Running"
-                    : service.installed
-                      ? "Installed"
-                      : "Not installed"}
+                  {service.supported === false
+                    ? "Manual only"
+                    : service.running
+                      ? "Running"
+                      : service.installed
+                        ? "Installed"
+                        : "Not installed"}
                 </Badge>
                 <p>
-                  {service.installed
-                    ? "Use the service for resilient background execution and better startup behavior."
-                    : "If the service is missing, Hermes only lives while the Electron app is open."}
+                  {service.supported === false
+                    ? "This platform currently runs Hermes in manual mode. Background daemon controls will appear here once they are supported."
+                    : service.installed
+                      ? "Use the background agent for resilient execution and better startup behavior."
+                      : "If the background agent is missing, Hermes only lives while the Electron app is open."}
                 </p>
               </div>
 
-              <div className="control-grid">
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    void runAction("service-install", () =>
-                      (window as any).api.serviceInstall()
-                    )
-                  }
-                  disabled={busyAction !== null || service.installed}
-                >
-                  <HardDriveDownload className="size-4" />
-                  Install
-                </Button>
-                <Button
-                  onClick={() =>
-                    void runAction("service-start", () =>
-                      (window as any).api.serviceStart()
-                    )
-                  }
-                  disabled={busyAction !== null || !service.installed || service.running}
-                >
-                  <Activity className="size-4" />
-                  Start
-                </Button>
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    void runAction("service-stop", () =>
-                      (window as any).api.serviceStop()
-                    )
-                  }
-                  disabled={
-                    busyAction !== null || !service.running || service.canStop === false
-                  }
-                >
-                  <Square className="size-4" />
-                  Stop
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() =>
-                    void runAction("service-uninstall", () =>
-                      (window as any).api.serviceUninstall()
-                    )
-                  }
-                  disabled={busyAction !== null || !service.installed}
-                >
-                  <Trash2 className="size-4" />
-                  Uninstall
-                </Button>
-              </div>
+              {service.supported !== false ? (
+                <div className="control-grid">
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      void runAction("service-install", () =>
+                        (window as any).api.serviceInstall()
+                      )
+                    }
+                    disabled={
+                      busyAction !== null ||
+                      service.installed ||
+                      service.actions?.install === false
+                    }
+                  >
+                    <HardDriveDownload className="size-4" />
+                    Install
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      void runAction("service-start", () =>
+                        (window as any).api.serviceStart()
+                      )
+                    }
+                    disabled={
+                      busyAction !== null ||
+                      !service.installed ||
+                      service.running ||
+                      service.actions?.start === false
+                    }
+                  >
+                    <Activity className="size-4" />
+                    Start
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      void runAction("service-stop", () =>
+                        (window as any).api.serviceStop()
+                      )
+                    }
+                    disabled={
+                      busyAction !== null ||
+                      !service.running ||
+                      service.canStop === false ||
+                      service.actions?.stop === false
+                    }
+                  >
+                    <Square className="size-4" />
+                    Stop
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() =>
+                      void runAction("service-uninstall", () =>
+                        (window as any).api.serviceUninstall()
+                      )
+                    }
+                    disabled={
+                      busyAction !== null ||
+                      !service.installed ||
+                      service.actions?.uninstall === false
+                    }
+                  >
+                    <Trash2 className="size-4" />
+                    Uninstall
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="details-list">
+                <DetailRow label="Platform" value={platformLabel} />
+                <DetailRow
+                  label="Mode"
+                  value={service.kind || "manual"}
+                  tone={service.supported === false ? "muted" : "ok"}
+                />
                 <DetailRow
                   label="Installed"
                   value={service.installed ? "Yes" : "No"}
-                  tone={service.installed ? "ok" : "warn"}
+                  tone={service.installed ? "ok" : service.supported === false ? "muted" : "warn"}
                 />
                 <DetailRow
                   label="Running"
-                  value={service.running ? "Yes" : "No"}
-                  tone={service.running ? "ok" : "warn"}
+                  value={
+                    service.supported === false
+                      ? "Managed externally"
+                      : service.running
+                        ? "Yes"
+                        : "No"
+                  }
+                  tone={
+                    service.supported === false ? "muted" : service.running ? "ok" : "warn"
+                  }
                 />
                 <DetailRow label="Status" value={service.status} />
               </div>
@@ -853,9 +967,13 @@ const App: React.FC = () => {
                   description="The live Hermes process is currently talking to the backend."
                 />
                 <ChecklistItem
-                  label="Service enabled"
-                  complete={service.installed && service.running}
-                  description="Background mode is installed and running independently from the UI."
+                  label="Background mode ready"
+                  complete={service.supported === false || (service.installed && service.running)}
+                  description={
+                    service.supported === false
+                      ? "This platform currently relies on the manual runtime instead of a managed daemon."
+                      : "Background mode is installed and running independently from the UI."
+                  }
                 />
               </div>
             </CardContent>

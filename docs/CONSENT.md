@@ -2,7 +2,7 @@
 
 ## Antes de instalar
 
-HERMES-WIN es un agente de monitorizacion y operacion remota para equipos Windows. Debe instalarse solo en equipos propios o en sistemas para los que exista autorizacion expresa.
+HERMES-WIN es un agente de monitorizacion y operacion remota para equipos Windows, Linux y macOS. Debe instalarse solo en equipos propios o en sistemas para los que exista autorizacion expresa.
 
 Al instalarlo, el usuario o administrador confirma que entiende:
 
@@ -13,7 +13,7 @@ Al instalarlo, el usuario o administrador confirma que entiende:
 ## Que hace HERMES-WIN
 
 - autentica el equipo contra el servidor configurado
-- mantiene una sesion compartida entre la app Electron y el servicio de Windows
+- mantiene una sesion compartida entre la app Electron y el agente en segundo plano de la plataforma
 - envia snapshots periodicos del estado del sistema
 - permite ejecutar comandos remotos predefinidos y auditables
 
@@ -52,16 +52,17 @@ El backend solo puede invocar comandos que ya estan contemplados por la aplicaci
 
 ## Donde se guarda informacion local
 
-- Sesion y estado compartido: `%ProgramData%\HERMES-WIN\runtime-state.json`
+- Sesion y estado compartido:
+  Windows `%ProgramData%\HERMES-WIN\runtime-state.json`, Linux `~/.local/state/hermes/runtime-state.json`, macOS `~/Library/Application Support/Prometeo Hermes/runtime-state.json`
 - Credenciales reutilizables desde la app: almacen de credenciales del sistema mediante `keytar`
-- Log local del agente: `logs/agent.log`
+- Log local del agente: carpeta de logs del runtime en cada plataforma
 
 ## Salvaguardas
 
 - La comunicacion con el servidor se realiza sobre TLS/WSS.
 - Los comandos estan limitados a una lista blanca en el runtime.
 - La actividad queda registrada en logs locales.
-- El servicio de Windows puede detenerse o desinstalarse desde la propia app.
+- El agente persistente puede gestionarse desde la propia app cuando la plataforma lo soporta.
 
 ## Requisitos de consentimiento
 

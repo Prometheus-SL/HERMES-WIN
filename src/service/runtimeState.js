@@ -1,14 +1,14 @@
 const fs = require('fs');
 const os = require('os');
-const path = require('path');
 const { normalizeServerUrl } = require('./serverUrl');
+const {
+  getRuntimeStateDirectory,
+  getRuntimeStateFilePath,
+} = require('./platform/paths');
 
 const DEFAULT_MONITORING_INTERVAL_MS = 30000;
-const PROGRAM_DATA_DIR = path.join(
-  process.env.PROGRAMDATA || 'C:\\ProgramData',
-  'HERMES-WIN'
-);
-const RUNTIME_STATE_FILE = path.join(PROGRAM_DATA_DIR, 'runtime-state.json');
+const PROGRAM_DATA_DIR = getRuntimeStateDirectory();
+const RUNTIME_STATE_FILE = getRuntimeStateFilePath();
 
 function ensureRuntimeDir() {
   fs.mkdirSync(PROGRAM_DATA_DIR, { recursive: true });

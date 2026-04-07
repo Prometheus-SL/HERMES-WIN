@@ -2,13 +2,13 @@
 
 ## Que archivo tengo que abrir
 
-Usa `HERMES-WIN-Setup-<version>.exe`.
+Usa `HERMES-windows-Setup-<version>.exe`.
 
 El `.zip` de la release sirve para soporte tecnico, validaciones internas o despliegues manuales, pero el instalador es la opcion recomendada para usuarios finales.
 
 ## Instalacion en 5 minutos
 
-1. Ejecuta `HERMES-WIN-Setup-<version>.exe`.
+1. Ejecuta `HERMES-windows-Setup-<version>.exe`.
 2. Acepta la instalacion y, si Windows lo solicita, concede permisos de administrador.
 3. Abre `Prometeo Hermes`.
 4. Inicia sesion con las credenciales y la URL del servidor que te haya facilitado soporte.
@@ -22,9 +22,9 @@ El `.zip` de la release sirve para soporte tecnico, validaciones internas o desp
 
 ## Que incluye cada release
 
-- `HERMES-WIN-Setup-<version>.exe`: instalador completo
-- `HERMES-WIN-<version>-x64.zip`: copia portable de la aplicacion
-- `HERMES-WIN-client-bundle-<version>.zip`: paquete de entrega con documentacion y checksums
+- `HERMES-windows-Setup-<version>.exe`: instalador completo
+- `HERMES-windows-<version>-x64.zip`: copia portable de la aplicacion
+- `HERMES-windows-client-bundle-<version>.zip`: paquete de entrega con documentacion y checksums
 
 ## Si algo falla
 
@@ -35,5 +35,5 @@ El `.zip` de la release sirve para soporte tecnico, validaciones internas o desp
 ## Informacion util para soporte
 
 - Estado del servicio: visible desde la propia app
-- Log local: `logs/agent.log`
+- Log local: `%ProgramData%\HERMES-WIN\logs\agent.log`
 - Estado compartido del runtime: `%ProgramData%\HERMES-WIN\runtime-state.json`

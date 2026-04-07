@@ -4,7 +4,21 @@ import path from "path";
 const fs = require("fs");
 
 const projectRoot = path.join(__dirname, "..", "..");
-const AgentManager = require(path.join(projectRoot, "src", "service", "agentManager.js"));
+const agentManagerPathCandidates = [
+  path.join(projectRoot, "dist", "service", "agentManager.js"),
+  path.join(projectRoot, "src", "service", "agentManager.js"),
+];
+const AgentManager = require(
+  agentManagerPathCandidates.find((candidate) => fs.existsSync(candidate)) ||
+    agentManagerPathCandidates[1]
+);
+const { getLogFilePath } = require(path.join(
+  projectRoot,
+  "src",
+  "service",
+  "platform",
+  "paths.js"
+));
 
 let agentManager: any = null;
 let mainWindow: BrowserWindow | null = null;
@@ -194,7 +208,7 @@ ipcMain.handle("credentials-has", async () => {
   }
 });
 
-const logsPath = path.join(projectRoot, "logs", "agent.log");
+const logsPath = getLogFilePath();
 
 ipcMain.handle("logs-read", async (_event, maxLines = 500) => {
   try {
