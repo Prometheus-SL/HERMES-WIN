@@ -11,6 +11,32 @@ $securityPath = Join-Path $docsDir 'SECURITY.md'
 $readmePath = Join-Path $projectRoot 'README.md'
 $licensePath = Join-Path $projectRoot 'LICENSE'
 
+function Get-Sha256Hex {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Path
+  )
+
+  $getFileHashCommand = Get-Command Get-FileHash -ErrorAction SilentlyContinue
+  if ($getFileHashCommand) {
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+
+  $stream = [System.IO.File]::OpenRead($Path)
+  try {
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+      $hashBytes = $sha256.ComputeHash($stream)
+    } finally {
+      $sha256.Dispose()
+    }
+  } finally {
+    $stream.Dispose()
+  }
+
+  return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '').ToLowerInvariant()
+}
+
 if (-not (Test-Path $releaseDir)) {
   throw "Release directory '$releaseDir' does not exist. Run 'npm run build' first."
 }
@@ -51,7 +77,7 @@ foreach ($artifact in $artifacts) {
 }
 
 $hashLines = foreach ($artifact in ($artifacts | Sort-Object Name)) {
-  $hash = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  $hash = Get-Sha256Hex -Path $artifact.FullName
   "$hash *$($artifact.Name)"
 }
 
