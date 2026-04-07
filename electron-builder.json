@@ -2,28 +2,18 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.prometheus.hermeswin",
   "productName": "Prometeo Hermes",
-  "artifactName": "Prometeo-Hermes-${version}-${arch}.${ext}",
+  "artifactName": "HERMES-WIN-${version}-${arch}.${ext}",
   "copyright": "Copyright (c) Prometeo SL",
   "directories": {
     "output": "release"
   },
   "files": [
     "dist/**/*",
-    "src/**/*",
+    "src/service/**/*",
+    "src/native/**/*.node",
     "!src/service/daemon/*.log",
     "package.json",
-    "README.md",
-    "CLIENT_QUICKSTART.md",
     "LICENSE"
-  ],
-  "extraResources": [
-    {
-      "from": "src/native",
-      "to": "native",
-      "filter": [
-        "**/*"
-      ]
-    }
   ],
   "npmRebuild": false,
   "asar": true,
@@ -32,6 +22,7 @@
     "src/native/**/*.node"
   ],
   "win": {
+    "signAndEditExecutable": false,
     "target": [
       {
         "target": "nsis",
@@ -48,7 +39,7 @@
     ]
   },
   "nsis": {
-    "artifactName": "Prometeo-Hermes-Setup-${version}.${ext}",
+    "artifactName": "HERMES-WIN-Setup-${version}.${ext}",
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,

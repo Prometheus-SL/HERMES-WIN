@@ -12,6 +12,8 @@ dist
 release
 dist-ssr
 *.local
+coverage
+src/native/win_volume/target/
 
 # Editor directories and files
 .vscode/*

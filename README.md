@@ -1,125 +1,100 @@
 # HERMES-WIN
 
-HERMES-WIN is the Windows desktop agent for PROMETEO. It can run in two modes over the same shared session:
+> Agente de escritorio de PROMETEO para Windows. Una sola sesion compartida entre la app Electron, el runtime local y el servicio del sistema.
 
-- Electron app in manual mode while the control panel is open.
-- Windows service for continuous background execution.
+## Vista general
 
-Both modes reuse the same `agentId`, `serverUrl`, and JWT session persisted in:
+HERMES-WIN cubre dos escenarios sobre la misma maquina:
+
+- consola Electron para login, estado del runtime, gestion del servicio y lectura de logs
+- servicio de Windows para mantener el agente activo en segundo plano
+
+Ambos modos reutilizan el mismo estado persistido en:
 
 `%ProgramData%\HERMES-WIN\runtime-state.json`
 
-## Runtime model
+## Lo importante de un vistazo
 
-- The Electron app authenticates the user once with `/auth/agent/login`.
-- HERMES stores the shared runtime state in `ProgramData`.
-- The runtime connects to Socket.IO and identifies as:
-  - `{ type: "agent", agentId, token }`
-- Every `30000 ms` the runtime sends a normalized `system_status` snapshot with:
-  - system
-  - resources
-  - network
-  - tags
-- If the Windows service is installed, the app stays in control-panel mode and does not start a second runtime.
+| Area | Como funciona |
+| --- | --- |
+| Login | La app autentica contra `/auth/agent/login` y guarda la sesion compartida. |
+| Runtime | El agente se conecta por Socket.IO y envia snapshots `system_status`. |
+| Servicio | La UI instala, arranca, detiene y desinstala `HermesNodeAgent`. |
+| Logs | La app muestra el contenido de `logs/agent.log` en tiempo real. |
+| Audio | El camino por defecto usa PowerShell. El addon Rust es opcional. |
+| Releases | Se generan instalador, zip portable y bundle cliente con checksums. |
 
-## Authentication
+## Arquitectura operativa
 
-- User credentials are stored with `keytar` to allow re-login from the Electron app.
-- The service does not depend on `keytar`.
-- The service reuses the shared session from `runtime-state.json`.
-- If the shared refresh/session becomes invalid, the service waits until the app authenticates again and rewrites the runtime state.
+1. El usuario inicia sesion desde la app Electron con email, password y URL del servidor.
+2. HERMES guarda `agentId`, `serverUrl`, tokens y estado del runtime en `ProgramData`.
+3. El runtime manual o el servicio reutilizan esa sesion y publican telemetria normalizada.
+4. La UI actua como panel de control para el servicio, el estado de conexion y los logs locales.
 
-## Commands
+## Telemetria que envia
 
-Available scripts:
+El payload principal del agente es `system_status` e incluye:
+
+- identificacion basica del equipo
+- CPU, memoria y discos
+- informacion de red
+- estado del audio cuando esta disponible
+- modo de ejecucion (`manual` o `service`)
+
+## Desarrollo local
+
+### Requisitos
+
+- Windows
+- Node.js 20
+- npm
+
+Rust no forma parte del camino feliz del proyecto. Solo hace falta si quieres compilar el addon nativo opcional de audio.
+
+### Scripts mas utiles
 
 ```powershell
 npm run start
 npm run start:dev
 npm run start:agent
+npm run typecheck
+npm test -- --ci
+npm run build
+npm run build:bundle
 npm run service:install
 npm run service:uninstall
 ```
 
-Notes:
+### Flujo recomendado
 
-- `npm run start` launches the Electron control panel.
-- `npm run start:agent` runs the shared runtime directly in service mode.
-- `npm run service:install` installs the Windows service `HermesNodeAgent`.
-
-## Release artifacts
-
-The automated workflows generate three user-facing outputs:
-
-- `HERMES-WIN-Setup-<version>.exe`: recommended installer for end users.
-- `HERMES-WIN-<version>-x64.zip`: packaged application zip for manual deployments or support.
-- `HERMES-WIN-client-bundle-<version>.zip`: delivery bundle with binaries, quick-start guide, and checksums.
-
-The client-facing installation steps live in `CLIENT_QUICKSTART.md` and are bundled automatically in release builds.
-
-## Control panel
-
-The Electron UI now acts as the control plane for:
-
-- authenticating Hermes
-- checking runtime status
-- checking service status
-- installing, starting, stopping, and uninstalling the Windows service
-- reading runtime logs
-
-## Telemetry payload
-
-The agent sends one canonical payload for dashboard consumption:
-
-```json
-{
-  "dataType": "system_status",
-  "schemaVersion": 1,
-  "sampledAt": "2026-04-05T18:00:00.000Z",
-  "mode": "manual",
-  "system": {
-    "hostname": "PC-MYHOST",
-    "username": "migue",
-    "uptimeSeconds": 1200,
-    "os": {
-      "platform": "win32",
-      "release": "10.0.22631",
-      "arch": "x64"
-    }
-  },
-  "resources": {
-    "cpu": {
-      "model": "Intel(R) Core(TM)...",
-      "cores": 8,
-      "speedMHz": 3200,
-      "percent": 22
-    },
-    "memory": {
-      "totalBytes": 17179869184,
-      "freeBytes": 8589934592,
-      "usedBytes": 8589934592,
-      "percent": 50
-    },
-    "disks": [
-      {
-        "drive": "C:",
-        "totalBytes": 512000000000,
-        "freeBytes": 256000000000,
-        "usedBytes": 256000000000,
-        "percent": 50
-      }
-    ]
-  },
-  "network": {
-    "ip": "192.168.1.10",
-    "mac": "00-11-22-33-44-55",
-    "interfaces": []
-  },
-  "tags": ["hermes", "windows"]
-}
+```powershell
+npm ci
+npm run typecheck
+npm test -- --ci
+npm run build:bundle
 ```
 
-## Development notes
+## Releases
 
-- This repository is the active JS/Electron implementation.
-- Older Rust-oriented documentation in the repo may describe historical work; prefer the current runtime behavior documented here.
+El pipeline genera siempre estos artefactos:
+
+- `HERMES-WIN-Setup-<version>.exe`: instalador recomendado para usuarios finales
+- `HERMES-WIN-<version>-x64.zip`: build portable para soporte o despliegues manuales
+- `HERMES-WIN-client-bundle-<version>.zip`: paquete de entrega con binarios, guia rapida y checksums
+- `SHA256SUMS.txt`: hashes SHA-256 de los artefactos principales
+
+## CI/CD
+
+Los workflows de GitHub Actions se han simplificado para el caso real del proyecto:
+
+- `CI`: instala dependencias, hace typecheck, ejecuta tests y construye el bundle completo
+- `Release`: repite la validacion y publica los artefactos al crear tags `v*`
+
+El addon Rust queda fuera del pipeline por defecto porque HERMES ya funciona con el camino PowerShell. Si algun dia hace falta activarlo, esta documentado aparte.
+
+## Documentacion
+
+- [Instalacion rapida](docs/CLIENT_QUICKSTART.md)
+- [Consentimiento y privacidad](docs/CONSENT.md)
+- [Seguridad](docs/SECURITY.md)
+- [Audio nativo opcional](docs/NATIVE_AUDIO.md)

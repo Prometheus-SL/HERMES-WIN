@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: ["main", "1-version"]
+    branches: ["development"]
   push:
-    branches: ["main", "1-version", "remove-rust-code"]
+    branches: ["development"]
 
 permissions:
   contents: read
@@ -17,6 +17,9 @@ jobs:
   build-windows-client:
     name: Build Windows client
     runs-on: windows-latest
+    env:
+      HERMES_ENABLE_NATIVE_AUDIO: "0"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
     steps:
       - name: Checkout repository
@@ -28,36 +31,17 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~\.cargo\bin
-            ~\.cargo\registry\cache
-            ~\.cargo\registry\index
-            ~\.cargo\git\db
-            src\native\win_volume\target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src/native/win_volume/Cargo.toml') }}
-
       - name: Install dependencies
         run: npm ci
 
       - name: Typecheck
-        run: npm run lint
+        run: npm run typecheck
 
       - name: Run tests
         run: npm test -- --ci
 
-      - name: Build installer and zip
-        run: npm run build
-
-      - name: Build client bundle
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client-bundle.ps1
+      - name: Build release bundle
+        run: npm run build:bundle
 
       - name: Upload client artifacts
         uses: actions/upload-artifact@v4
@@ -65,6 +49,7 @@ jobs:
           name: hermes-win-client-artifacts
           if-no-files-found: error
           path: |
-            release\*.exe
-            release\*.zip
-            release\SHA256SUMS.txt
+            release/HERMES-WIN-Setup-*.exe
+            release/HERMES-WIN-*-x64.zip
+            release/HERMES-WIN-client-bundle-*.zip
+            release/SHA256SUMS.txt

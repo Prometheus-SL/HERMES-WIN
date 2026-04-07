@@ -3,12 +3,11 @@ let native = null;
 
 function getNativeCandidates() {
     const candidates = [
-        path.join(__dirname, '..', '..', 'native', 'win_volume', 'target', 'release', 'win_volume.node'),
+        path.join(__dirname, '..', 'native', 'win_volume', 'target', 'release', 'win_volume.node'),
     ];
 
     if (process.resourcesPath) {
         candidates.push(
-            path.join(process.resourcesPath, 'native', 'win_volume', 'target', 'release', 'win_volume.node'),
             path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'native', 'win_volume', 'target', 'release', 'win_volume.node')
         );
     }
