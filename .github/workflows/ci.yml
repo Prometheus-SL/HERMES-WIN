@@ -1,98 +1,70 @@
 name: CI
 
 on:
-  push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: ["main", "1-version"]
+  push:
+    branches: ["main", "1-version", "remove-rust-code"]
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout sources
-      uses: actions/checkout@v4
-
-    - name: Install stable toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Run cargo test
-      run: cargo test --verbose
-
-  fmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout sources
-      uses: actions/checkout@v4
-
-    - name: Install stable toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: rustfmt
-
-    - name: Run cargo fmt
-      run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout sources
-      uses: actions/checkout@v4
-
-    - name: Install stable toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: clippy
-
-    - name: Run cargo clippy
-      run: cargo clippy -- -D warnings
-
-  build-windows:
-    name: Build Windows x64
+  build-windows-client:
+    name: Build Windows client
     runs-on: windows-latest
-    needs: [test, fmt, clippy]
+
     steps:
-    - name: Checkout sources
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Install stable toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: x86_64-pc-windows-msvc
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
 
-    - name: Build release
-      run: cargo build --release --target x86_64-pc-windows-msvc
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
-    - name: Upload Windows Service binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: hermes-agent-service-windows-x64
-        path: target/x86_64-pc-windows-msvc/release/agent-service.exe
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\bin
+            ~\.cargo\registry\cache
+            ~\.cargo\registry\index
+            ~\.cargo\git\db
+            src\native\win_volume\target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src/native/win_volume/Cargo.toml') }}
 
-    - name: Upload Windows Tray binary
-      uses: actions/upload-artifact@v4
-      with:
-        name: hermes-agent-tray-windows-x64
-        path: target/x86_64-pc-windows-msvc/release/agent-tray.exe
+      - name: Install dependencies
+        run: npm ci
 
-  security-audit:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout sources
-      uses: actions/checkout@v4
+      - name: Typecheck
+        run: npm run lint
 
-    - name: Install stable toolchain
-      uses: dtolnay/rust-toolchain@stable
+      - name: Run tests
+        run: npm test -- --ci
 
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
+      - name: Build installer and zip
+        run: npm run build
 
-    - name: Run cargo audit
-      run: cargo audit
+      - name: Build client bundle
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client-bundle.ps1
+
+      - name: Upload client artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-win-client-artifacts
+          if-no-files-found: error
+          path: |
+            release\*.exe
+            release\*.zip
+            release\SHA256SUMS.txt

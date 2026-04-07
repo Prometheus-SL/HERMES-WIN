@@ -1,0 +1,63 @@
+{
+  "name": "hermes-electron-app",
+  "version": "1.0.0",
+  "description": "Prometeo Hermes desktop console for Windows agent management",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build:ts": "tsc",
+    "build:renderer": "node scripts/build-renderer-esbuild.js",
+    "build:assets": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Remove-Item -Path 'dist\\renderer\\styles' -Recurse -Force -ErrorAction SilentlyContinue; npm run build:renderer; Copy-Item -Path 'src\\renderer\\index.html' -Destination 'dist\\renderer' -Force\"",
+    "build:native": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-native-win-volume.ps1",
+    "build:app": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; npm run build:native\"",
+    "build": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:app; npx electron-builder --config electron-builder.json --publish never\"",
+    "build:bundle": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build; powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-client-bundle.ps1\"",
+    "start": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; electron .\"",
+    "start:dev": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"npm run build:ts; npm run build:assets; Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue; cross-env NODE_ENV=development electron .\"",
+    "start:agent": "node src/service/agent.js",
+    "start:agent:manual": "node src/service/manualAgent.js",
+    "service:install": "node -e \"require('./src/service/serviceWindows').installService()\"",
+    "service:uninstall": "node -e \"require('./src/service/serviceWindows').uninstallService()\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "npm run typecheck",
+    "test": "jest --passWithNoTests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/hermes-electron-app.git"
+  },
+  "keywords": [
+    "electron",
+    "cross-platform",
+    "native-bindings"
+  ],
+  "author": "Your Name",
+  "license": "GPL-2.0-or-later",
+  "dependencies": {
+    "@radix-ui/react-progress": "^1.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
+    "axios": "latest",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cross-env": "latest",
+    "keytar": "latest",
+    "lucide-react": "^1.7.0",
+    "node-windows": "latest",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io-client": "latest",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron": "^25.0.0",
+    "electron-builder": "latest",
+    "esbuild": "^0.25.11",
+    "eslint": "latest",
+    "jest": "latest",
+    "shadcn": "^4.1.2",
+    "tslib": "^2.8.1",
+    "typescript": "latest"
+  }
+}
