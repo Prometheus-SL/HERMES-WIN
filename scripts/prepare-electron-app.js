@@ -48,7 +48,16 @@ const appPackageJson = {
   version: sourcePackageJson.version,
   description: sourcePackageJson.description,
   main: sourcePackageJson.main,
-  author: sourcePackageJson.author,
+  author:
+    typeof sourcePackageJson.author === 'string'
+      ? {
+          name: sourcePackageJson.author,
+          email: 'engineering@prometeo.local',
+        }
+      : sourcePackageJson.author || {
+          name: 'Prometeo',
+          email: 'engineering@prometeo.local',
+        },
   license: sourcePackageJson.license,
   dependencies: {},
   optionalDependencies: {},

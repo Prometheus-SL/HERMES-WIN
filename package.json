@@ -32,7 +32,10 @@
     "cross-platform",
     "native-bindings"
   ],
-  "author": "Your Name",
+  "author": {
+    "name": "Prometeo",
+    "email": "engineering@prometeo.local"
+  },
   "license": "GPL-2.0-or-later",
   "optionalDependencies": {
     "keytar": "latest",
