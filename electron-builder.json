@@ -1,0 +1,58 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "com.prometheus.hermeswin",
+  "productName": "Prometeo Hermes",
+  "artifactName": "Prometeo-Hermes-${version}-${arch}.${ext}",
+  "copyright": "Copyright (c) Prometeo SL",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "src/**/*",
+    "!src/service/daemon/*.log",
+    "package.json",
+    "README.md",
+    "CLIENT_QUICKSTART.md",
+    "LICENSE"
+  ],
+  "extraResources": [
+    {
+      "from": "src/native",
+      "to": "native",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "npmRebuild": false,
+  "asar": true,
+  "asarUnpack": [
+    "src/service/**/*.js",
+    "src/native/**/*.node"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "artifactName": "Prometeo-Hermes-Setup-${version}.${ext}",
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  }
+}
