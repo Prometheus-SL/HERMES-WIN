@@ -7,6 +7,7 @@ const {
     setMuted,
     setVolume,
 } = require('./audioControl');
+const systemCommands = require('./platform/systemCommands');
 const { collectSystemSnapshot } = require('./systemSnapshot');
 
 class CommandExecutor {
@@ -46,7 +47,7 @@ class CommandExecutor {
         try {
             switch (commandType) {
                 case 'lock_screen':
-                    await this.lockScreen();
+                    await systemCommands.lockScreen();
                     return { success: true };
                 case 'volume_mute':
                     return { success: true, data: { audio: await this.handleVolume({ action: 'mute' }) } };
@@ -73,13 +74,13 @@ class CommandExecutor {
                 case 'get_audio_state':
                     return { success: true, data: { audio: await getAudioState() } };
                 case 'open_app':
-                    await this.openApp(command.parameters);
+                    await systemCommands.openApp(command.parameters);
                     return { success: true };
                 case 'sleep':
-                    await this.sleepSystem(command.parameters);
+                    await systemCommands.sleepSystem(command.parameters?.type || 'suspend');
                     return { success: true };
                 case 'hibernate':
-                    await this.sleepSystem({ type: 'hibernate' });
+                    await systemCommands.sleepSystem('hibernate');
                     return { success: true };
                 case 'get_system_info': {
                     const snapshot = await collectSystemSnapshot('command');
@@ -100,23 +101,22 @@ class CommandExecutor {
                     return { success: false, error: 'Unknown command' };
             }
         } catch (e) {
-            return { success: false, error: e.message };
+            return {
+                success: false,
+                error: e.message,
+                errorCode: e.code || null,
+            };
         }
-    }
-
-    lockScreen() {
-        return new Promise((resolve, reject) => {
-            exec('rundll32.exe user32.dll,LockWorkStation', (err) => {
-                if (err) return reject(err);
-                resolve();
-            });
-        });
     }
 
     handleVolume(params) {
         if (!params || !params.action) return Promise.reject(new Error('Invalid params'));
         if (params.action === 'mute' || params.action === 'unmute') {
             return setMuted(params.action === 'mute').catch(() => {
+                if (process.platform !== 'win32') {
+                    throw new Error('Audio mute fallback is only available on Windows.');
+                }
+
                 if (winvol && typeof winvol.mute === 'function') {
                     try {
                         winvol.mute();
@@ -151,6 +151,10 @@ class CommandExecutor {
     }
 
     stepVolumeFallback(direction) {
+        if (process.platform !== 'win32') {
+            return Promise.reject(new Error('Audio step fallback is only available on Windows.'));
+        }
+
         if (direction === 'up' && winvol && typeof winvol.volume_up === 'function') {
             try {
                 winvol.volume_up();
@@ -179,39 +183,6 @@ class CommandExecutor {
         });
     }
 
-    openApp(params) {
-        const path = params?.path;
-        const args = params?.args || [];
-        if (!path) return Promise.reject(new Error('Missing path'));
-        return new Promise((resolve, reject) => {
-            const child = exec(`"${path}" ${args.map(a => `"${a}"`).join(' ')}`, (err) => {
-                if (err) return reject(err);
-                resolve();
-            });
-            // No window console for GUI apps is not trivial from node; accept default behavior for now
-        });
-    }
-
-    sleepSystem(params) {
-        const type = params?.type || 'suspend';
-        if (type === 'suspend') {
-            return new Promise((resolve, reject) => {
-                exec('rundll32.exe powrprof.dll,SetSuspendState 0,1,0', (err) => {
-                    if (err) return reject(err);
-                    resolve();
-                });
-            });
-        }
-        if (type === 'hibernate') {
-            return new Promise((resolve, reject) => {
-                exec('rundll32.exe powrprof.dll,SetSuspendState 1,1,0', (err) => {
-                    if (err) return reject(err);
-                    resolve();
-                });
-            });
-        }
-        return Promise.reject(new Error('Unknown sleep type'));
-    }
 }
 
 module.exports = CommandExecutor;

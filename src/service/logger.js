@@ -1,9 +1,9 @@
 const fs = require('fs');
-const path = require('path');
+const { getLogFilePath, getLogsDirectory } = require('./platform/paths');
 
-const logDir = path.join(__dirname, '..', '..', 'logs');
+const logDir = getLogsDirectory();
 try { fs.mkdirSync(logDir, { recursive: true }); } catch (e) { }
-const logFile = path.join(logDir, 'agent.log');
+const logFile = getLogFilePath();
 
 function timestamp() { return new Date().toISOString(); }
 
@@ -17,6 +17,7 @@ function write(level, msg) {
 }
 
 module.exports = {
+    logFile,
     info: (m) => write('INFO', m),
     debug: (m) => write('DEBUG', m),
     warn: (m) => write('WARN', m),

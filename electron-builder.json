@@ -1,16 +1,19 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.prometheus.hermeswin",
+  "appId": "com.prometeo.hermes",
   "productName": "Prometeo Hermes",
-  "artifactName": "HERMES-WIN-${version}-${arch}.${ext}",
+  "artifactName": "HERMES-${os}-${version}-${arch}.${ext}",
   "copyright": "Copyright (c) Prometeo SL",
   "directories": {
+    "app": "dist/app",
     "output": "release"
   },
   "files": [
     "dist/**/*",
-    "src/service/**/*",
     "src/native/**/*.node",
+    "node_modules/keytar/**/*",
+    "node_modules/node-windows/**/*",
+    "!src/service/daemon/**/*",
     "!src/service/daemon/*.log",
     "package.json",
     "LICENSE"
@@ -18,10 +21,14 @@
   "npmRebuild": false,
   "asar": true,
   "asarUnpack": [
-    "src/service/**/*.js",
+    "dist/service/**/*.js",
     "src/native/**/*.node"
+    ,
+    "node_modules/keytar/**/*",
+    "node_modules/node-windows/**/*"
   ],
   "win": {
+    "artifactName": "HERMES-windows-${version}-${arch}.${ext}",
     "signAndEditExecutable": false,
     "target": [
       {
@@ -39,11 +46,39 @@
     ]
   },
   "nsis": {
-    "artifactName": "HERMES-WIN-Setup-${version}.${ext}",
+    "artifactName": "HERMES-windows-Setup-${version}.${ext}",
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
+  },
+  "linux": {
+    "artifactName": "HERMES-linux-${version}-${arch}.${ext}",
+    "category": "Utility",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "deb",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "mac": {
+    "artifactName": "HERMES-macos-${version}-${arch}.${ext}",
+    "category": "public.app-category.utilities",
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "target": [
+      "dmg",
+      "zip"
+    ]
   }
 }

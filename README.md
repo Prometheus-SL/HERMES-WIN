@@ -1,17 +1,19 @@
 # HERMES-WIN
 
-> Agente de escritorio de PROMETEO para Windows. Una sola sesion compartida entre la app Electron, el runtime local y el servicio del sistema.
+> Agente de escritorio de PROMETEO para Windows, Linux y macOS. Una sola sesion compartida entre la app Electron, el runtime local y el agente en segundo plano.
 
 ## Vista general
 
 HERMES-WIN cubre dos escenarios sobre la misma maquina:
 
-- consola Electron para login, estado del runtime, gestion del servicio y lectura de logs
-- servicio de Windows para mantener el agente activo en segundo plano
+- consola Electron para login, estado del runtime, gestion del agente y lectura de logs
+- agente en segundo plano gestionado por plataforma: servicio de Windows, `systemd --user` en Linux y modo manual en macOS v1
 
-Ambos modos reutilizan el mismo estado persistido en:
+El estado compartido se persiste por plataforma:
 
-`%ProgramData%\HERMES-WIN\runtime-state.json`
+- Windows: `%ProgramData%\HERMES-WIN\runtime-state.json`
+- Linux: `~/.local/state/hermes/runtime-state.json`
+- macOS: `~/Library/Application Support/Prometeo Hermes/runtime-state.json`
 
 ## Lo importante de un vistazo
 
@@ -19,17 +21,17 @@ Ambos modos reutilizan el mismo estado persistido en:
 | --- | --- |
 | Login | La app autentica contra `/auth/agent/login` y guarda la sesion compartida. |
 | Runtime | El agente se conecta por Socket.IO y envia snapshots `system_status`. |
-| Servicio | La UI instala, arranca, detiene y desinstala `HermesNodeAgent`. |
-| Logs | La app muestra el contenido de `logs/agent.log` en tiempo real. |
-| Audio | El camino por defecto usa PowerShell. El addon Rust es opcional. |
-| Releases | Se generan instalador, zip portable y bundle cliente con checksums. |
+| Servicio | La UI expone el agente real de cada plataforma y sus acciones disponibles. |
+| Logs | La app muestra el contenido del log local en tiempo real desde la ruta de runtime de cada sistema. |
+| Audio | Windows mantiene el camino PowerShell; Linux usa `wpctl` con fallback a `pactl`; macOS v1 queda en modo no soportado. |
+| Releases | Se generan artefactos por plataforma y bundles cliente con checksums. |
 
 ## Arquitectura operativa
 
 1. El usuario inicia sesion desde la app Electron con email, password y URL del servidor.
-2. HERMES guarda `agentId`, `serverUrl`, tokens y estado del runtime en `ProgramData`.
-3. El runtime manual o el servicio reutilizan esa sesion y publican telemetria normalizada.
-4. La UI actua como panel de control para el servicio, el estado de conexion y los logs locales.
+2. HERMES guarda `agentId`, `serverUrl`, tokens y estado del runtime en la ruta nativa del sistema.
+3. El runtime manual o el agente en segundo plano reutilizan esa sesion y publican telemetria normalizada.
+4. La UI actua como panel de control para el agente, el estado de conexion y los logs locales.
 
 ## Telemetria que envia
 
@@ -39,13 +41,13 @@ El payload principal del agente es `system_status` e incluye:
 - CPU, memoria y discos
 - informacion de red
 - estado del audio cuando esta disponible
-- modo de ejecucion (`manual` o `service`)
+- modo de ejecucion (`manual` o `service`) y capacidades de la plataforma
 
 ## Desarrollo local
 
 ### Requisitos
 
-- Windows
+- Windows, Linux o macOS
 - Node.js 20
 - npm
 
@@ -76,21 +78,21 @@ npm run build:bundle
 
 ## Releases
 
-El pipeline genera siempre estos artefactos:
+El pipeline genera siempre artefactos por plataforma:
 
-- `HERMES-WIN-Setup-<version>.exe`: instalador recomendado para usuarios finales
-- `HERMES-WIN-<version>-x64.zip`: build portable para soporte o despliegues manuales
-- `HERMES-WIN-client-bundle-<version>.zip`: paquete de entrega con binarios, guia rapida y checksums
-- `SHA256SUMS.txt`: hashes SHA-256 de los artefactos principales
+- Windows: `HERMES-windows-Setup-<version>.exe`, `HERMES-windows-<version>-x64.zip`, `HERMES-windows-client-bundle-<version>.zip`
+- Linux: `HERMES-linux-<version>-x64.AppImage`, `HERMES-linux-<version>-x64.deb`, `HERMES-linux-client-bundle-<version>.zip`
+- macOS: `HERMES-macos-<version>-<arch>.dmg`, `HERMES-macos-<version>-<arch>.zip`, `HERMES-macos-client-bundle-<version>.zip`
+- Checksums: `SHA256SUMS-<plataforma>.txt`
 
 ## CI/CD
 
-Los workflows de GitHub Actions se han simplificado para el caso real del proyecto:
+Los workflows de GitHub Actions ahora trabajan con una matrix multi-OS:
 
-- `CI`: instala dependencias, hace typecheck, ejecuta tests y construye el bundle completo
-- `Release`: repite la validacion y publica los artefactos al crear tags `v*`
+- `CI`: instala dependencias, hace typecheck, ejecuta tests y construye artefactos para Windows, Linux y macOS
+- `Release`: repite la validacion y publica los artefactos por plataforma al crear tags `v*`
 
-El addon Rust queda fuera del pipeline por defecto porque HERMES ya funciona con el camino PowerShell. Si algun dia hace falta activarlo, esta documentado aparte.
+El addon Rust queda fuera del pipeline por defecto porque HERMES ya funciona sin el camino nativo en la ruta principal. Si algun dia hace falta activarlo, esta documentado aparte.
 
 ## Documentacion
 

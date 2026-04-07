@@ -252,6 +252,7 @@ class AgentRuntime extends EventEmitter {
           success: Boolean(result?.success),
           result: result?.data ?? result?.result ?? result ?? null,
           error: result?.error || null,
+          errorCode: result?.errorCode || null,
           executionTime: Date.now() - startedAt,
         });
 
@@ -265,6 +266,7 @@ class AgentRuntime extends EventEmitter {
           commandId,
           success: false,
           error: error.message || String(error),
+          errorCode: error.code || null,
           executionTime: Date.now() - startedAt,
         });
       }

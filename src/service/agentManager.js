@@ -3,7 +3,8 @@ const credentials = require('./credentials');
 const logger = require('./logger');
 const AuthManager = require('./auth');
 const AgentRuntime = require('./agentRuntime');
-const serviceWindows = require('./serviceWindows');
+const serviceManager = require('./serviceManager');
+const { buildStatusPayload } = require('./statusPayload');
 const {
     ensureRuntimeState,
     getPublicRuntimeState,
@@ -76,28 +77,28 @@ class AgentManager extends EventEmitter {
     }
 
     async installService() {
-        const result = await serviceWindows.installService();
+        const result = await serviceManager.installService();
         await this._syncManualRuntimeWithService();
         this.emit('status', await this.getStatusSnapshot());
         return result;
     }
 
     async uninstallService() {
-        const result = await serviceWindows.uninstallService();
+        const result = await serviceManager.uninstallService();
         await this._syncManualRuntimeWithService();
         this.emit('status', await this.getStatusSnapshot());
         return result;
     }
 
     async startService() {
-        const result = await serviceWindows.startService();
+        const result = await serviceManager.startService();
         await this._syncManualRuntimeWithService();
         this.emit('status', await this.getStatusSnapshot());
         return result;
     }
 
     async stopService() {
-        const result = await serviceWindows.stopService();
+        const result = await serviceManager.stopService();
         await this._syncManualRuntimeWithService();
         this.emit('status', await this.getStatusSnapshot());
         return result;
@@ -106,25 +107,25 @@ class AgentManager extends EventEmitter {
     async getStatusSnapshot() {
         const service = await this._safeGetServiceStatus();
         const runtimeState = getPublicRuntimeState();
-        return {
+        return buildStatusPayload({
             runtime: this._selectRuntimeStatus(service, runtimeState),
             runtimeState,
             service,
             hasStoredCredentials: await credentials.hasCredentials(),
-        };
+        });
     }
 
     getStatusSnapshotSync() {
-        const service = {
+        const service = serviceManager.normalizeServiceStatus({
             installed: false,
             running: false,
             status: 'unknown',
-        };
+        });
         const runtimeState = getPublicRuntimeState();
-        return {
+        return buildStatusPayload({
             runtime: this._selectRuntimeStatus(service, runtimeState),
             runtimeState,
-        };
+        });
     }
 
     async _syncManualRuntimeWithService() {
@@ -132,16 +133,16 @@ class AgentManager extends EventEmitter {
         const runtimeState = loadRuntimeState();
         const publicRuntimeState = getPublicRuntimeState();
 
-        if (serviceStatus.installed) {
+        if (serviceStatus.installed && serviceStatus.supported) {
             if (this.manualRuntime.running) {
                 logger.info('Service detected, stopping manual runtime to avoid duplicate agents.');
                 await this.manualRuntime.stop();
             }
-            this.emit('status', {
+            this.emit('status', buildStatusPayload({
                 runtime: this._selectRuntimeStatus(serviceStatus, publicRuntimeState),
                 runtimeState: publicRuntimeState,
                 service: serviceStatus,
-            });
+            }));
             return;
         }
 
@@ -159,17 +160,16 @@ class AgentManager extends EventEmitter {
 
     async _safeGetServiceStatus() {
         try {
-            return await serviceWindows.getServiceStatus();
+            return await serviceManager.getServiceStatus();
         } catch (error) {
             logger.warn(`Service status check failed: ${error.message || error}`);
-            return {
-                name: serviceWindows.SERVICE_NAME,
+            return serviceManager.normalizeServiceStatus({
                 installed: false,
                 status: 'unknown',
                 running: false,
                 canStop: false,
                 error: error.message || String(error),
-            };
+            });
         }
     }
 
@@ -177,7 +177,7 @@ class AgentManager extends EventEmitter {
         const manualRuntime = runtimeState?.manualRuntime;
         const serviceRuntime = runtimeState?.serviceRuntime;
 
-        if (serviceStatus?.installed) {
+        if (serviceStatus?.installed && serviceStatus?.supported) {
             if (serviceRuntime) {
                 return serviceRuntime;
             }

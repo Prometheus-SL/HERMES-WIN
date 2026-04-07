@@ -24,15 +24,16 @@ HERMES-WIN combina tres piezas con niveles de confianza distintos:
 
 - interfaz Electron para login, estado y operacion local
 - runtime Node que mantiene la conexion con el backend
-- servicio de Windows que conserva el agente online sin depender de la UI
+- agente en segundo plano gestionado por plataforma que conserva el runtime online sin depender de la UI
 
 El objetivo de seguridad es reducir privilegios innecesarios, limitar comandos remotos y dejar trazabilidad local.
 
 ## Datos sensibles y almacenamiento
 
-- El estado compartido del runtime se guarda en `%ProgramData%\HERMES-WIN\runtime-state.json`.
+- El estado compartido del runtime se guarda en la ruta nativa del sistema:
+  Windows `%ProgramData%\HERMES-WIN\runtime-state.json`, Linux `~/.local/state/hermes/runtime-state.json`, macOS `~/Library/Application Support/Prometeo Hermes/runtime-state.json`.
 - Las credenciales reutilizables de la app se almacenan mediante `keytar`.
-- Los eventos operativos se escriben en `logs/agent.log`.
+- Los eventos operativos se escriben en la carpeta de logs del runtime de cada plataforma.
 
 Protege esas rutas con permisos adecuados y evita copiarlas sin necesidad a otros equipos o tickets de soporte.
 
@@ -60,7 +61,7 @@ Recomendaciones:
 
 ## Despliegue recomendado
 
-- Ejecuta el servicio solo cuando de verdad necesites modo persistente.
+- Ejecuta el agente persistente solo cuando de verdad necesites modo continuo.
 - Usa la minima elevacion posible durante la instalacion.
 - Restringe el trafico saliente a dominios y puertos conocidos.
 - Manten Node, Electron y dependencias al dia mediante releases controladas.
@@ -83,7 +84,7 @@ Revision recomendada adicional:
 
 ## Respuesta ante incidentes
 
-1. Deten el servicio si hay sospecha de abuso o ejecucion remota no esperada.
-2. Conserva `logs/agent.log` y el estado del runtime para analisis.
+1. Deten el agente persistente si hay sospecha de abuso o ejecucion remota no esperada.
+2. Conserva el log local y el estado del runtime para analisis.
 3. Revoca la sesion si el backend o los tokens pueden haber quedado comprometidos.
 4. Publica una version corregida y redistribuye los artefactos firmados o validados.

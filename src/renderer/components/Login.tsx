@@ -67,7 +67,7 @@ const Login: React.FC<Props> = ({ onLoginSuccess }) => {
             <h2>Authenticate this machine once and keep the session reusable.</h2>
             <p>
               The runtime stores the session in a shared state file so the desktop
-              app and the Windows service can both work from the same credentials.
+              app and the background agent can both work from the same credentials.
             </p>
           </div>
 

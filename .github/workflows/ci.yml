@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: ["development"]
+    branches: ["main"]
   push:
     branches: ["development"]
 
@@ -14,9 +14,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-windows-client:
-    name: Build Windows client
-    runs-on: windows-latest
+  build-client:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            label: Windows artifacts
+          - os: ubuntu-latest
+            platform: linux
+            label: Linux artifacts
+          - os: macos-latest
+            platform: macos
+            label: macOS artifacts
     env:
       HERMES_ENABLE_NATIVE_AUDIO: "0"
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -46,10 +59,8 @@ jobs:
       - name: Upload client artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: hermes-win-client-artifacts
+          name: hermes-${{ matrix.platform }}-client-artifacts
           if-no-files-found: error
           path: |
-            release/HERMES-WIN-Setup-*.exe
-            release/HERMES-WIN-*-x64.zip
-            release/HERMES-WIN-client-bundle-*.zip
-            release/SHA256SUMS.txt
+            release/HERMES-${{ matrix.platform }}-*
+            release/SHA256SUMS-${{ matrix.platform }}.txt
