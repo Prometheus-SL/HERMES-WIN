@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('api', {
     runtimeStatus: () => ipcRenderer.invoke('runtime-status'),
     runtimeClear: () => ipcRenderer.invoke('runtime-clear'),
     runtimeRestart: () => ipcRenderer.invoke('runtime-restart'),
+    installMediaExtension: () => ipcRenderer.invoke('media-extension-install'),
+    openMediaExtensionFolder: (extensionDir: string) =>
+        ipcRenderer.invoke('media-extension-open-folder', extensionDir),
+    openMediaExtensionBrowser: () => ipcRenderer.invoke('media-extension-open-browser'),
+    updateMediaSettings: (settings: { mediaTelemetryEnabled?: boolean; mediaBridgePort?: number; mediaBridgeToken?: string }) =>
+        ipcRenderer.invoke('media-settings-update', settings),
     serviceStatus: () => ipcRenderer.invoke('service-status'),
     serviceInstall: () => ipcRenderer.invoke('service-install'),
     serviceUninstall: () => ipcRenderer.invoke('service-uninstall'),

@@ -9,6 +9,7 @@ const {
     ensureRuntimeState,
     getPublicRuntimeState,
     loadRuntimeState,
+    saveRuntimeState,
 } = require('./runtimeState');
 
 class AgentManager extends EventEmitter {
@@ -102,6 +103,37 @@ class AgentManager extends EventEmitter {
         await this._syncManualRuntimeWithService();
         this.emit('status', await this.getStatusSnapshot());
         return result;
+    }
+
+    async updateMediaSettings(settings = {}) {
+        const current = loadRuntimeState();
+        const patch = {};
+
+        if (typeof settings.mediaTelemetryEnabled === 'boolean') {
+            patch.mediaTelemetryEnabled = settings.mediaTelemetryEnabled;
+        }
+
+        if (Number.isFinite(Number(settings.mediaBridgePort)) && Number(settings.mediaBridgePort) > 0) {
+            patch.mediaBridgePort = Number(settings.mediaBridgePort);
+        }
+
+        if (typeof settings.mediaBridgeToken === 'string' && settings.mediaBridgeToken.trim()) {
+            patch.mediaBridgeToken = settings.mediaBridgeToken.trim();
+        }
+
+        saveRuntimeState({
+            ...current,
+            ...patch,
+        });
+
+        if (this.manualRuntime.running) {
+            this.manualRuntime._setStatus({
+                mediaBridge: this.manualRuntime.mediaBridgeManager.getStatusSnapshot(),
+            });
+        }
+
+        this.emit('status', await this.getStatusSnapshot());
+        return this.getStatusSnapshot();
     }
 
     async getStatusSnapshot() {

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const os = require('os');
+const { randomBytes } = require('crypto');
 const { normalizeServerUrl } = require('./serverUrl');
 const {
   getRuntimeStateDirectory,
@@ -7,6 +8,7 @@ const {
 } = require('./platform/paths');
 
 const DEFAULT_MONITORING_INTERVAL_MS = 30000;
+const DEFAULT_MEDIA_BRIDGE_PORT = 47653;
 const PROGRAM_DATA_DIR = getRuntimeStateDirectory();
 const RUNTIME_STATE_FILE = getRuntimeStateFilePath();
 
@@ -26,12 +28,17 @@ function buildDefaultState() {
   return {
     agentId: `PC-${sanitizeHostname(os.hostname())}`,
     monitoringIntervalMs: DEFAULT_MONITORING_INTERVAL_MS,
+    mediaTelemetryEnabled: false,
+    mediaBridgePort: DEFAULT_MEDIA_BRIDGE_PORT,
+    mediaBridgeToken: randomBytes(24).toString('hex'),
+    mediaBridgeStatus: null,
   };
 }
 
 function normalizeState(candidate = {}) {
   const defaults = buildDefaultState();
   const monitoringIntervalMs = Number(candidate.monitoringIntervalMs);
+  const mediaBridgePort = Number(candidate.mediaBridgePort);
   const normalizedManualRuntime =
     candidate.manualRuntime && typeof candidate.manualRuntime === 'object'
       ? { ...candidate.manualRuntime }
@@ -50,6 +57,19 @@ function normalizeState(candidate = {}) {
       Number.isFinite(monitoringIntervalMs) && monitoringIntervalMs > 0
         ? monitoringIntervalMs
         : defaults.monitoringIntervalMs,
+    mediaTelemetryEnabled:
+      typeof candidate.mediaTelemetryEnabled === 'boolean'
+        ? candidate.mediaTelemetryEnabled
+        : defaults.mediaTelemetryEnabled,
+    mediaBridgePort:
+      Number.isFinite(mediaBridgePort) && mediaBridgePort > 0
+        ? mediaBridgePort
+        : defaults.mediaBridgePort,
+    mediaBridgeToken: String(candidate.mediaBridgeToken || defaults.mediaBridgeToken),
+    mediaBridgeStatus:
+      candidate.mediaBridgeStatus && typeof candidate.mediaBridgeStatus === 'object'
+        ? { ...candidate.mediaBridgeStatus }
+        : null,
     manualRuntime: normalizedManualRuntime,
     serviceRuntime: normalizedServiceRuntime,
   };
@@ -98,6 +118,12 @@ function clearRuntimeSession() {
     agentId: current.agentId,
     serverUrl: current.serverUrl || '',
     monitoringIntervalMs: current.monitoringIntervalMs,
+    mediaTelemetryEnabled: current.mediaTelemetryEnabled,
+    mediaBridgePort: current.mediaBridgePort,
+    mediaBridgeToken: current.mediaBridgeToken,
+    mediaBridgeStatus: current.mediaBridgeStatus || null,
+    manualRuntime: current.manualRuntime || null,
+    serviceRuntime: current.serviceRuntime || null,
   };
 
   fs.writeFileSync(RUNTIME_STATE_FILE, JSON.stringify(nextState, null, 2));
@@ -110,6 +136,10 @@ function getPublicRuntimeState() {
     serverUrl: state.serverUrl || '',
     agentId: state.agentId,
     monitoringIntervalMs: state.monitoringIntervalMs,
+    mediaTelemetryEnabled: Boolean(state.mediaTelemetryEnabled),
+    mediaBridgePort: Number(state.mediaBridgePort || DEFAULT_MEDIA_BRIDGE_PORT),
+    mediaBridgeToken: state.mediaBridgeToken || '',
+    mediaBridgeStatus: state.mediaBridgeStatus || null,
     lastAuthAt: state.lastAuthAt || null,
     hasAccessToken: Boolean(state.accessToken),
     hasRefreshToken: Boolean(state.refreshToken),
@@ -120,6 +150,7 @@ function getPublicRuntimeState() {
 
 module.exports = {
   DEFAULT_MONITORING_INTERVAL_MS,
+  DEFAULT_MEDIA_BRIDGE_PORT,
   PROGRAM_DATA_DIR,
   RUNTIME_STATE_FILE,
   ensureRuntimeDir,

@@ -27,6 +27,7 @@ HERMES-WIN puede recopilar y transmitir:
 - informacion basica de red, como IP y MAC
 - estado del audio cuando esta disponible
 - eventos operativos: conexion, errores, reinicios del runtime y ejecucion de comandos
+- estado multimedia del navegador y metadatos de la pestaña activa solo si se activa expresamente el bridge local de media
 
 ## Datos que no recopila por defecto
 
@@ -37,6 +38,7 @@ HERMES-WIN no esta pensado para capturar:
 - comunicaciones privadas
 - pulsaciones de teclado
 - capturas de pantalla
+- historiales completos de navegacion
 
 ## Comandos remotos soportados
 
@@ -44,6 +46,7 @@ El backend solo puede invocar comandos que ya estan contemplados por la aplicaci
 
 - cambio de volumen y mute
 - cambio del dispositivo de audio por defecto
+- play, pause y otras ordenes multimedia soportadas por el bridge local del navegador
 - apertura de aplicaciones
 - bloqueo de pantalla
 - suspension e hibernacion

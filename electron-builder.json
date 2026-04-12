@@ -10,6 +10,7 @@
   },
   "files": [
     "dist/**/*",
+    "extensions/**/*",
     "src/native/**/*.node",
     "node_modules/keytar/**/*",
     "node_modules/node-windows/**/*",
@@ -22,6 +23,7 @@
   "asar": true,
   "asarUnpack": [
     "dist/service/**/*.js",
+    "extensions/**/*",
     "src/native/**/*.node"
     ,
     "node_modules/keytar/**/*",

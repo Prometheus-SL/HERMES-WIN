@@ -1,5 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
+import {
+  installMediaExtension,
+  openPreparedMediaExtensionFolder,
+  reopenMediaExtensionBrowserPage,
+} from "./mediaExtensionInstaller";
 
 const fs = require("fs");
 
@@ -137,6 +142,53 @@ ipcMain.handle("runtime-restart", async () => {
   try {
     const status = await getAgentManager().restartRuntime();
     return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
+ipcMain.handle("media-settings-update", async (_event, settings) => {
+  try {
+    const status = await getAgentManager().updateMediaSettings(settings || {});
+    return { ok: true, status };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
+ipcMain.handle("media-extension-install", async () => {
+  try {
+    const status = await getAgentManager().updateMediaSettings({
+      mediaTelemetryEnabled: true,
+    });
+    const bridgePort = Number(status?.runtimeState?.mediaBridgePort || 47653);
+    const bridgeToken = String(status?.runtimeState?.mediaBridgeToken || "");
+
+    const installer = await installMediaExtension({
+      projectRoot,
+      bridgePort,
+      bridgeToken,
+    });
+
+    return { ok: true, status, installer };
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
+ipcMain.handle("media-extension-open-folder", async (_event, extensionDir) => {
+  try {
+    const result = await openPreparedMediaExtensionFolder(String(extensionDir || ""));
+    return result;
+  } catch (error) {
+    return { ok: false, error: String(error) };
+  }
+});
+
+ipcMain.handle("media-extension-open-browser", async () => {
+  try {
+    const installer = await reopenMediaExtensionBrowserPage();
+    return { ok: true, installer };
   } catch (error) {
     return { ok: false, error: String(error) };
   }

@@ -3,6 +3,8 @@ function getPlatformCapabilities(platform = process.platform) {
     return {
       audio: true,
       audioOutputs: true,
+      mediaNowPlaying: true,
+      mediaBridge: true,
       sleep: true,
       hibernate: true,
       lockScreen: true,
@@ -14,6 +16,8 @@ function getPlatformCapabilities(platform = process.platform) {
     return {
       audio: true,
       audioOutputs: true,
+      mediaNowPlaying: false,
+      mediaBridge: false,
       sleep: true,
       hibernate: true,
       lockScreen: true,
@@ -24,6 +28,8 @@ function getPlatformCapabilities(platform = process.platform) {
   return {
     audio: false,
     audioOutputs: false,
+    mediaNowPlaying: false,
+    mediaBridge: false,
     sleep: false,
     hibernate: false,
     lockScreen: false,

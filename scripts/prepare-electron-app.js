@@ -33,6 +33,7 @@ copyDirectoryIfExists(path.join(projectRoot, 'dist', 'preload'), path.join(appDi
 copyDirectoryIfExists(path.join(projectRoot, 'dist', 'renderer'), path.join(appDir, 'dist', 'renderer'));
 copyDirectoryIfExists(path.join(projectRoot, 'dist', 'service'), path.join(appDir, 'dist', 'service'));
 copyDirectoryIfExists(path.join(projectRoot, 'src', 'native'), path.join(appDir, 'src', 'native'));
+copyDirectoryIfExists(path.join(projectRoot, 'extensions'), path.join(appDir, 'extensions'));
 
 copyFileIfExists(path.join(projectRoot, 'LICENSE'), path.join(appDir, 'LICENSE'));
 

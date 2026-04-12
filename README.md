@@ -24,7 +24,16 @@ El estado compartido se persiste por plataforma:
 | Servicio | La UI expone el agente real de cada plataforma y sus acciones disponibles. |
 | Logs | La app muestra el contenido del log local en tiempo real desde la ruta de runtime de cada sistema. |
 | Audio | Windows mantiene el camino PowerShell; Linux usa `wpctl` con fallback a `pactl`; macOS v1 queda en modo no soportado. |
+| Media bridge | Windows puede exponer un bridge local para la extension `Hermes Media Bridge` y publicar `media_update` hacia PROMETEO. |
 | Releases | Se generan artefactos por plataforma y bundles cliente con checksums. |
+
+## Instalar la extension de navegador
+
+1. Abre la tarjeta `Now Playing bridge` en Hermes.
+2. Pulsa `Install in browser`.
+3. Hermes activara el bridge si hace falta, preparara una copia de la extension con la URL y el token ya configurados, e intentara abrir la pagina de extensiones de Chrome, Edge o Brave.
+4. Pulsa `Open prepared folder` si necesitas abrir la carpeta que Hermes ha dejado lista.
+5. En la pagina de extensiones, activa `Developer mode`, usa `Load unpacked` y selecciona esa carpeta preparada.
 
 ## Arquitectura operativa
 
@@ -41,6 +50,7 @@ El payload principal del agente es `system_status` e incluye:
 - CPU, memoria y discos
 - informacion de red
 - estado del audio cuando esta disponible
+- estado multimedia del navegador en `media_update` cuando el bridge local esta activo
 - modo de ejecucion (`manual` o `service`) y capacidades de la plataforma
 
 ## Desarrollo local

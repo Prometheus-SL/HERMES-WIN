@@ -3,6 +3,7 @@ const { io } = require('socket.io-client');
 const logger = require('./logger');
 const AuthManager = require('./auth');
 const CommandExecutor = require('./commandExecutor');
+const MediaBridgeManager = require('./mediaBridgeManager');
 const { getPreferredSocketUrl } = require('./serverUrl');
 const {
   ensureRuntimeState,
@@ -21,13 +22,24 @@ const SNAPSHOT_AFTER_COMMANDS = new Set([
   'audio_output_set',
   'get_audio_state',
 ]);
+const MEDIA_COMMANDS = new Set([
+  'media_refresh',
+  'media_toggle_playback',
+  'media_play',
+  'media_pause',
+  'media_next',
+  'media_previous',
+]);
 
 class AgentRuntime extends EventEmitter {
   constructor(options = {}) {
     super();
     this.mode = options.mode || 'manual';
     this.auth = new AuthManager();
-    this.commandExecutor = new CommandExecutor();
+    this.mediaBridgeManager = new MediaBridgeManager({ mode: this.mode });
+    this.commandExecutor = new CommandExecutor({
+      mediaBridgeManager: this.mediaBridgeManager,
+    });
     this.socket = null;
     this.running = false;
     this.monitorTimer = null;
@@ -42,7 +54,19 @@ class AgentRuntime extends EventEmitter {
       monitoringIntervalMs: loadRuntimeState().monitoringIntervalMs,
       lastSnapshotAt: null,
       lastError: null,
+      mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
     };
+
+    this.mediaBridgeManager.on('status', (mediaBridgeStatus) => {
+      this._setStatus({ mediaBridge: mediaBridgeStatus });
+    });
+
+    this.mediaBridgeManager.on('update', (snapshot) => {
+      this._setStatus({
+        mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
+      });
+      void this.sendMediaSnapshot(snapshot);
+    });
   }
 
   getStatus() {
@@ -55,6 +79,10 @@ class AgentRuntime extends EventEmitter {
       hasAccessToken: Boolean(latest.accessToken),
       hasRefreshToken: Boolean(latest.refreshToken),
       lastAuthAt: latest.lastAuthAt || null,
+      mediaBridge:
+        this.status.mediaBridge ||
+        latest.mediaBridgeStatus ||
+        this.mediaBridgeManager.getStatusSnapshot(),
     };
   }
 
@@ -74,6 +102,7 @@ class AgentRuntime extends EventEmitter {
   async start() {
     this.running = true;
     this._setStatus({ lifecycle: 'starting', lastError: null });
+    await this.mediaBridgeManager.start();
     await this._connectOrWait();
   }
 
@@ -91,6 +120,8 @@ class AgentRuntime extends EventEmitter {
       }
       this.socket = null;
     }
+
+    await this.mediaBridgeManager.stop();
 
     this._setStatus({
       lifecycle: 'stopped',
@@ -201,6 +232,9 @@ class AgentRuntime extends EventEmitter {
       setTimeout(() => {
         void this.sendSystemSnapshot();
       }, 200);
+      setTimeout(() => {
+        void this.sendMediaSnapshot();
+      }, 350);
     });
 
     socket.on('disconnect', (reason) => {
@@ -259,6 +293,12 @@ class AgentRuntime extends EventEmitter {
         if (Boolean(result?.success) && SNAPSHOT_AFTER_COMMANDS.has(commandType)) {
           setTimeout(() => {
             void this.sendSystemSnapshot();
+          }, 100);
+        }
+
+        if (Boolean(result?.success) && MEDIA_COMMANDS.has(commandType)) {
+          setTimeout(() => {
+            void this.sendMediaSnapshot();
           }, 100);
         }
       } catch (error) {
@@ -345,6 +385,36 @@ class AgentRuntime extends EventEmitter {
     } catch (error) {
       logger.warn(`Failed to collect snapshot: ${error.message || error}`);
       this._setStatus({
+        lastError: error.message || String(error),
+      });
+      return null;
+    }
+  }
+
+  async sendMediaSnapshot(snapshotOverride = null) {
+    if (!this.running || !this.socket || !this.socket.connected) {
+      return null;
+    }
+
+    try {
+      const snapshot = snapshotOverride || this.mediaBridgeManager.getCurrentSnapshot();
+      if (!snapshot?.media) {
+        return null;
+      }
+
+      this.socket.emit('agent-data', {
+        ...snapshot,
+        mode: this.mode,
+      });
+      this._setStatus({
+        mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
+        lastError: null,
+      });
+      return snapshot;
+    } catch (error) {
+      logger.warn(`Failed to publish media snapshot: ${error.message || error}`);
+      this._setStatus({
+        mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
         lastError: error.message || String(error),
       });
       return null;

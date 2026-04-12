@@ -16,6 +16,8 @@ describe('buildStatusPayload', () => {
 
     expect(payload.platform).toBe('win32');
     expect(payload.capabilities.daemonControl).toBe(true);
+    expect(payload.capabilities.mediaNowPlaying).toBe(true);
+    expect(payload.capabilities.mediaBridge).toBe(true);
     expect(payload.service.kind).toBe('windows-service');
     expect(payload.service.supported).toBe(true);
     expect(payload.service.running).toBe(true);

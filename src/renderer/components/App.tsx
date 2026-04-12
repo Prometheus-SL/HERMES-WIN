@@ -4,6 +4,7 @@ import {
   Bot,
   CheckCircle2,
   CloudCog,
+  ExternalLink,
   Gauge,
   HardDriveDownload,
   LifeBuoy,
@@ -70,10 +71,34 @@ type ServiceStatus = {
 type PlatformCapabilities = {
   audio?: boolean;
   audioOutputs?: boolean;
+  mediaNowPlaying?: boolean;
+  mediaBridge?: boolean;
   sleep?: boolean;
   hibernate?: boolean;
   lockScreen?: boolean;
   daemonControl?: boolean;
+};
+
+type MediaBridgeStatus = {
+  enabled?: boolean;
+  port?: number;
+  status?: string;
+  lastError?: string | null;
+  lastClientSeenAt?: string | null;
+  hasClient?: boolean;
+  currentProvider?: string;
+  currentTitle?: string;
+};
+
+type MediaExtensionInstallerState = {
+  extensionDir: string;
+  bridgeUrl: string;
+  autoConfigured: boolean;
+  browserOpened: boolean;
+  browserName?: string | null;
+  extensionsUrl?: string | null;
+  usedFallbackBrowser?: boolean;
+  warning?: string | null;
 };
 
 type StatusPayload = {
@@ -84,11 +109,16 @@ type StatusPayload = {
     serverUrl?: string;
     agentId?: string;
     monitoringIntervalMs?: number;
+    mediaTelemetryEnabled?: boolean;
+    mediaBridgePort?: number;
+    mediaBridgeToken?: string;
+    mediaBridgeStatus?: MediaBridgeStatus | null;
     lastAuthAt?: string | null;
     hasAccessToken?: boolean;
     hasRefreshToken?: boolean;
   };
   service?: ServiceStatus;
+  mediaBridge?: MediaBridgeStatus | null;
   hasStoredCredentials?: boolean;
 };
 
@@ -398,6 +428,8 @@ const App: React.FC = () => {
   const [showLogs, setShowLogs] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [mediaInstaller, setMediaInstaller] =
+    useState<MediaExtensionInstallerState | null>(null);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -430,6 +462,8 @@ const App: React.FC = () => {
   const service = status.service ?? EMPTY_STATUS.service!;
   const runtimeState = status.runtimeState ?? EMPTY_STATUS.runtimeState!;
   const sessionState = getSessionState(runtimeState, status.hasStoredCredentials);
+  const mediaBridge = status.mediaBridge ?? runtimeState.mediaBridgeStatus ?? null;
+  const mediaTelemetryEnabled = Boolean(runtimeState.mediaTelemetryEnabled);
   const needsLogin = !runtimeState.serverUrl || sessionState === "missing";
   const runtimeProgress = computeRuntimeProgress(runtime);
   const sessionProgress = computeSessionProgress(sessionState);
@@ -448,6 +482,19 @@ const App: React.FC = () => {
   const serverLabel = compactServerLabel(runtimeState.serverUrl || runtime.serverUrl);
   const activeAgent = runtimeState.agentId || runtime.agentId || "Awaiting assignment";
   const lifecycleLabel = runtime.connected ? "online" : runtime.lifecycle;
+  const mediaStatusTone: BadgeTone = !mediaTelemetryEnabled
+    ? "secondary"
+    : mediaBridge?.hasClient
+      ? "success"
+      : mediaBridge?.status === "error"
+        ? "destructive"
+        : "warning";
+  const mediaStatusLabel = !mediaTelemetryEnabled
+    ? "Disabled"
+    : mediaBridge?.hasClient
+      ? "Linked"
+      : mediaBridge?.status || "Waiting";
+  const canInstallMediaExtension = status.capabilities?.mediaBridge !== false;
 
   useEffect(() => {
     if (actionError || runtime.lastError) {
@@ -491,6 +538,76 @@ const App: React.FC = () => {
       }
 
       await refreshStatus();
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function installMediaExtensionFlow() {
+    setActionError(null);
+    setBusyAction("media-extension-install");
+
+    try {
+      const result = await (window as any).api.installMediaExtension();
+      if (!result?.ok) {
+        setActionError(result?.error || "Could not prepare the browser extension");
+        return;
+      }
+
+      if (result.status) {
+        setStatus((prev) => ({ ...prev, ...result.status }));
+      }
+
+      if (result.installer) {
+        setMediaInstaller(result.installer);
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function openPreparedExtensionFolder() {
+    if (!mediaInstaller?.extensionDir) {
+      return;
+    }
+
+    setActionError(null);
+    setBusyAction("media-extension-folder");
+
+    try {
+      const result = await (window as any).api.openMediaExtensionFolder(
+        mediaInstaller.extensionDir
+      );
+      if (!result?.ok) {
+        setActionError(result?.error || "Could not open the prepared extension folder");
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function reopenMediaExtensionBrowser() {
+    setActionError(null);
+    setBusyAction("media-extension-browser");
+
+    try {
+      const result = await (window as any).api.openMediaExtensionBrowser();
+      if (!result?.ok) {
+        setActionError(result?.error || "Could not open the browser extensions page");
+        return;
+      }
+
+      if (result.installer) {
+        setMediaInstaller((current) => ({
+          ...(current || {
+            extensionDir: "",
+            bridgeUrl: "",
+            autoConfigured: true,
+            browserOpened: false,
+          }),
+          ...result.installer,
+        }));
+      }
     } finally {
       setBusyAction(null);
     }
@@ -976,6 +1093,201 @@ const App: React.FC = () => {
                   }
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="surface-card status-panel">
+            <CardHeader>
+              <div className="panel-header">
+                <span className="panel-header__icon">
+                  <Waypoints className="size-4" />
+                </span>
+                <div>
+                  <CardTitle>Now Playing bridge</CardTitle>
+                  <CardDescription>
+                    Local browser bridge for Hermes media telemetry and widget playback handoff.
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="status-panel__content status-panel__content--spaced">
+              <div className="service-banner">
+                <Badge variant={mediaStatusTone}>{mediaStatusLabel}</Badge>
+                <p>
+                  {mediaTelemetryEnabled
+                    ? "Hermes is exposing a localhost bridge for the browser extension so Prometeo can read Now Playing state and queue media controls."
+                    : "Enable media telemetry to expose the localhost bridge used by the Hermes Now Playing browser extension."}
+                </p>
+              </div>
+
+              <div className="control-grid">
+                <Button
+                  onClick={() =>
+                    void runAction("media-settings", () =>
+                      (window as any).api.updateMediaSettings({
+                        mediaTelemetryEnabled: !mediaTelemetryEnabled,
+                      })
+                    )
+                  }
+                  disabled={busyAction !== null}
+                >
+                  <Waypoints className="size-4" />
+                  {mediaTelemetryEnabled ? "Disable bridge" : "Enable bridge"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => void installMediaExtensionFlow()}
+                  disabled={busyAction !== null || !canInstallMediaExtension}
+                >
+                  <ExternalLink className="size-4" />
+                  Install in browser
+                </Button>
+              </div>
+
+              {mediaInstaller ? (
+                <div className="media-installer">
+                  <div className="service-banner">
+                    <Badge variant={mediaInstaller.browserOpened ? "success" : "warning"}>
+                      {mediaInstaller.browserOpened
+                        ? `${mediaInstaller.browserName || "Browser"} opened`
+                        : "Finish the browser setup"}
+                    </Badge>
+                    <p>
+                      Hermes already prepared a ready-to-load extension folder with the
+                      bridge URL and token included. You do not need to paste anything
+                      manually.
+                    </p>
+                  </div>
+
+                  <div className="checklist">
+                    <ChecklistItem
+                      label="Open the extensions page"
+                      complete={Boolean(mediaInstaller.browserOpened)}
+                      description={
+                        mediaInstaller.browserOpened
+                          ? `${mediaInstaller.browserName || "Your browser"} was opened on its extensions page.`
+                          : "Use the button below if Chrome, Edge, or Brave did not open automatically."
+                      }
+                    />
+                    <ChecklistItem
+                      label="Open the prepared folder"
+                      complete={Boolean(mediaInstaller.extensionDir)}
+                      description="Hermes generated a folder that is already configured. No URL or token copy-paste is needed."
+                    />
+                    <ChecklistItem
+                      label="Load the extension"
+                      complete={false}
+                      description="In the browser page, enable Developer mode, click Load unpacked, and choose the prepared Hermes folder."
+                    />
+                  </div>
+
+                  <div className="control-grid">
+                    <Button
+                      variant="outline"
+                      onClick={() => void reopenMediaExtensionBrowser()}
+                      disabled={busyAction !== null}
+                    >
+                      <ExternalLink className="size-4" />
+                      Open browser page
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => void openPreparedExtensionFolder()}
+                      disabled={busyAction !== null || !mediaInstaller.extensionDir}
+                    >
+                      <HardDriveDownload className="size-4" />
+                      Open prepared folder
+                    </Button>
+                  </div>
+
+                  <div className="details-list">
+                    <DetailRow
+                      label="Browser page"
+                      value={mediaInstaller.extensionsUrl || "Not opened automatically"}
+                      tone={mediaInstaller.browserOpened ? "ok" : "warn"}
+                    />
+                    <DetailRow
+                      label="Prepared folder"
+                      value={mediaInstaller.extensionDir || "Not created"}
+                      tone={mediaInstaller.extensionDir ? "ok" : "warn"}
+                    />
+                    <DetailRow
+                      label="Setup mode"
+                      value={
+                        mediaInstaller.autoConfigured
+                          ? "Preconfigured by Hermes"
+                          : "Manual"
+                      }
+                      tone={mediaInstaller.autoConfigured ? "ok" : "warn"}
+                    />
+                  </div>
+
+                  {mediaInstaller.warning ? (
+                    <div className="status-banner status-banner--warn">
+                      {mediaInstaller.warning}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="status-panel__note">
+                  Hermes can guide the install for non-technical users: it prepares
+                  the extension folder, tries to open the browser on the right page,
+                  and removes the need to copy the bridge URL or token.
+                </p>
+              )}
+
+              <div className="details-list">
+                <DetailRow
+                  label="Telemetry"
+                  value={mediaTelemetryEnabled ? "Enabled" : "Disabled"}
+                  tone={mediaTelemetryEnabled ? "ok" : "warn"}
+                />
+                <DetailRow
+                  label="Bridge status"
+                  value={mediaBridge?.status || "disabled"}
+                  tone={
+                    mediaBridge?.status === "error"
+                      ? "warn"
+                      : mediaBridge?.hasClient
+                        ? "ok"
+                        : "muted"
+                  }
+                />
+                <DetailRow
+                  label="Port"
+                  value={String(mediaBridge?.port || runtimeState.mediaBridgePort || "") || "Not set"}
+                />
+                <DetailRow
+                  label="Token"
+                  value={
+                    runtimeState.mediaBridgeToken ? (
+                      <code className="status-panel__mono">
+                        {runtimeState.mediaBridgeToken}
+                      </code>
+                    ) : (
+                      "Not generated"
+                    )
+                  }
+                />
+                <DetailRow
+                  label="Last browser ping"
+                  value={formatDateTime(mediaBridge?.lastClientSeenAt)}
+                />
+                <DetailRow
+                  label="Current source"
+                  value={mediaBridge?.currentProvider || "No active browser media"}
+                />
+                <DetailRow
+                  label="Current title"
+                  value={mediaBridge?.currentTitle || "Waiting for extension data"}
+                />
+              </div>
+
+              {mediaBridge?.lastError ? (
+                <div className="status-banner status-banner--warn">
+                  {mediaBridge.lastError}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </section>

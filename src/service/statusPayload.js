@@ -5,6 +5,7 @@ function buildStatusPayload({
   runtime = null,
   runtimeState = null,
   service = null,
+  mediaBridge = null,
   hasStoredCredentials = false,
   platform = process.platform,
 } = {}) {
@@ -14,6 +15,10 @@ function buildStatusPayload({
     runtime,
     runtimeState,
     service: normalizeServiceStatus(service || {}, platform),
+    mediaBridge:
+      mediaBridge && typeof mediaBridge === 'object'
+        ? { ...mediaBridge }
+        : runtime?.mediaBridge || runtimeState?.mediaBridgeStatus || null,
     hasStoredCredentials: Boolean(hasStoredCredentials),
   };
 }

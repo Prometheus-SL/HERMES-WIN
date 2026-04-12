@@ -12,6 +12,7 @@ const { collectSystemSnapshot } = require('./systemSnapshot');
 
 class CommandExecutor {
     constructor(config) {
+        this.mediaBridgeManager = config?.mediaBridgeManager || null;
         this.config = config || {
             allowed_commands: [
                 'volume_set',
@@ -21,6 +22,12 @@ class CommandExecutor {
                 'volume_down',
                 'audio_output_set',
                 'get_audio_state',
+                'media_refresh',
+                'media_toggle_playback',
+                'media_play',
+                'media_pause',
+                'media_next',
+                'media_previous',
                 'open_app',
                 'lock_screen',
                 'sleep',
@@ -73,6 +80,19 @@ class CommandExecutor {
                     };
                 case 'get_audio_state':
                     return { success: true, data: { audio: await getAudioState() } };
+                case 'media_refresh':
+                    return { success: true, data: { media: await this.getMediaState() } };
+                case 'media_toggle_playback':
+                case 'media_play':
+                case 'media_pause':
+                case 'media_next':
+                case 'media_previous':
+                    return {
+                        success: true,
+                        data: {
+                            media: await this.queueMediaCommand(commandType, command.parameters || {})
+                        }
+                    };
                 case 'open_app':
                     await systemCommands.openApp(command.parameters);
                     return { success: true };
@@ -181,6 +201,27 @@ class CommandExecutor {
                 void getAudioState().then(resolve).catch(reject);
             });
         });
+    }
+
+    async getMediaState() {
+        if (!this.mediaBridgeManager) {
+            throw new Error('Media bridge manager is not available.');
+        }
+
+        return this.mediaBridgeManager.getCurrentSnapshot()?.media || null;
+    }
+
+    async queueMediaCommand(commandType, parameters = {}) {
+        if (!this.mediaBridgeManager) {
+            throw new Error('Media bridge manager is not available.');
+        }
+
+        const result = this.mediaBridgeManager.queueCommand(commandType, parameters);
+        return {
+            ...(result.media || {}),
+            queued: Boolean(result.queued),
+            queuedCommandId: result.commandId || null,
+        };
     }
 
 }

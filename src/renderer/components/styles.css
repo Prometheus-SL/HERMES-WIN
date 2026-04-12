@@ -718,6 +718,26 @@ select {
     width: 100%;
 }
 
+.status-panel__note {
+    margin: 0;
+    color: var(--text-soft);
+    line-height: 1.6;
+}
+
+.status-panel__mono {
+    display: inline-block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-size: 0.72rem;
+    font-family: Consolas, "SFMono-Regular", monospace;
+}
+
+.media-installer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
 .checklist {
     display: flex;
     flex-direction: column;
