@@ -5,6 +5,7 @@ import {
   openPreparedMediaExtensionFolder,
   reopenMediaExtensionBrowserPage,
 } from "./mediaExtensionInstaller";
+import { getLogFilePath } from "./runtimePaths";
 
 const fs = require("fs");
 
@@ -17,13 +18,6 @@ const AgentManager = require(
   agentManagerPathCandidates.find((candidate) => fs.existsSync(candidate)) ||
     agentManagerPathCandidates[1]
 );
-const { getLogFilePath } = require(path.join(
-  projectRoot,
-  "src",
-  "service",
-  "platform",
-  "paths.js"
-));
 
 let agentManager: any = null;
 let mainWindow: BrowserWindow | null = null;
