@@ -1,4 +1,5 @@
 const EventEmitter = require('events');
+const { createHash } = require('crypto');
 const { io } = require('socket.io-client');
 const logger = require('./logger');
 const AuthManager = require('./auth');
@@ -44,6 +45,7 @@ class AgentRuntime extends EventEmitter {
     this.running = false;
     this.monitorTimer = null;
     this.retryTimer = null;
+    this._lastSnapshotHash = null;
     this.status = {
       mode: this.mode,
       lifecycle: 'idle',
@@ -57,16 +59,19 @@ class AgentRuntime extends EventEmitter {
       mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
     };
 
-    this.mediaBridgeManager.on('status', (mediaBridgeStatus) => {
+    this._onMediaBridgeStatus = (mediaBridgeStatus) => {
       this._setStatus({ mediaBridge: mediaBridgeStatus });
-    });
+    };
 
-    this.mediaBridgeManager.on('update', (snapshot) => {
+    this._onMediaBridgeUpdate = (snapshot) => {
       this._setStatus({
         mediaBridge: this.mediaBridgeManager.getStatusSnapshot(),
       });
       void this.sendMediaSnapshot(snapshot);
-    });
+    };
+
+    this.mediaBridgeManager.on('status', this._onMediaBridgeStatus);
+    this.mediaBridgeManager.on('update', this._onMediaBridgeUpdate);
   }
 
   getStatus() {
@@ -121,6 +126,8 @@ class AgentRuntime extends EventEmitter {
       this.socket = null;
     }
 
+    this.mediaBridgeManager.removeListener('status', this._onMediaBridgeStatus);
+    this.mediaBridgeManager.removeListener('update', this._onMediaBridgeUpdate);
     await this.mediaBridgeManager.stop();
 
     this._setStatus({
@@ -201,7 +208,7 @@ class AgentRuntime extends EventEmitter {
     const socket = io(socketUrl, {
       auth: { token },
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 50,
       reconnectionDelayMax: 15000,
       timeout: 20000,
     });
@@ -375,6 +382,15 @@ class AgentRuntime extends EventEmitter {
 
     try {
       const snapshot = await collectSystemSnapshot(this.mode);
+      const hash = createHash('md5')
+        .update(JSON.stringify(snapshot))
+        .digest('hex');
+
+      if (hash === this._lastSnapshotHash) {
+        return null;
+      }
+
+      this._lastSnapshotHash = hash;
       this.socket.emit('agent-data', snapshot);
       this._setStatus({
         lastSnapshotAt: snapshot.sampledAt,

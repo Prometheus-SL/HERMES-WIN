@@ -1,6 +1,7 @@
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const os = require('os');
-const { randomBytes } = require('crypto');
+const { randomBytes, createHash, createCipheriv, createDecipheriv } = require('crypto');
 const { normalizeServerUrl } = require('./serverUrl');
 const {
   getRuntimeStateDirectory,
@@ -11,6 +12,47 @@ const DEFAULT_MONITORING_INTERVAL_MS = 30000;
 const DEFAULT_MEDIA_BRIDGE_PORT = 47653;
 const PROGRAM_DATA_DIR = getRuntimeStateDirectory();
 const RUNTIME_STATE_FILE = getRuntimeStateFilePath();
+const DEBOUNCE_MS = 500;
+
+let _cachedState = null;
+let _writeTimer = null;
+let _writing = false;
+let _pendingStateToWrite = null;
+
+function getRuntimeEncryptionKey() {
+  const machineId = os.hostname() + os.userInfo().username;
+  return createHash('sha256').update('hermes-runtime-' + machineId).digest();
+}
+
+function encryptField(value) {
+  if (!value) return value;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getRuntimeEncryptionKey(), iv);
+  const ct = Buffer.concat([cipher.update(String(value), 'utf8'), cipher.final()]);
+  return `enc:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${ct.toString('base64')}`;
+}
+
+function decryptField(value) {
+  if (!value || typeof value !== 'string') return value;
+  if (!value.startsWith('enc:')) return value; // legacy plaintext
+  const parts = value.split(':');
+  if (parts.length !== 4) return null;
+  try {
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      getRuntimeEncryptionKey(),
+      Buffer.from(parts[1], 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(parts[2], 'base64'));
+    const pt = Buffer.concat([
+      decipher.update(Buffer.from(parts[3], 'base64')),
+      decipher.final(),
+    ]);
+    return pt.toString('utf8');
+  } catch (_error) {
+    return null;
+  }
+}
 
 function ensureRuntimeDir() {
   fs.mkdirSync(PROGRAM_DATA_DIR, { recursive: true });
@@ -75,19 +117,56 @@ function normalizeState(candidate = {}) {
   };
 }
 
-function loadRuntimeState() {
+function invalidateRuntimeStateCache() {
+  _cachedState = null;
+}
+
+function loadRuntimeState(options = {}) {
+  if (_cachedState && !options.force) return _cachedState;
+
   ensureRuntimeDir();
 
   try {
     if (!fs.existsSync(RUNTIME_STATE_FILE)) {
-      return normalizeState();
+      _cachedState = normalizeState();
+      return _cachedState;
     }
 
     const raw = fs.readFileSync(RUNTIME_STATE_FILE, 'utf8');
-    return normalizeState(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    // Decrypt token fields transparently
+    if (parsed.accessToken) parsed.accessToken = decryptField(parsed.accessToken);
+    if (parsed.refreshToken) parsed.refreshToken = decryptField(parsed.refreshToken);
+    _cachedState = normalizeState(parsed);
+    return _cachedState;
   } catch (_error) {
-    return normalizeState();
+    _cachedState = normalizeState();
+    return _cachedState;
   }
+}
+
+function _scheduleDiskWrite(stateToWrite) {
+  _pendingStateToWrite = stateToWrite;
+  if (_writeTimer) clearTimeout(_writeTimer);
+  _writeTimer = setTimeout(async () => {
+    _writeTimer = null;
+    if (_writing) return;
+    const nextStateToWrite = _pendingStateToWrite || stateToWrite;
+    _pendingStateToWrite = null;
+    _writing = true;
+    try {
+      await fsPromises.writeFile(RUNTIME_STATE_FILE, JSON.stringify(nextStateToWrite, null, 2));
+    } catch (_error) {
+      // Disk write failed — in-memory state still consistent
+    } finally {
+      _writing = false;
+      if (_pendingStateToWrite) {
+        const pending = _pendingStateToWrite;
+        _pendingStateToWrite = null;
+        _scheduleDiskWrite(pending);
+      }
+    }
+  }, DEBOUNCE_MS);
 }
 
 function saveRuntimeState(patch = {}) {
@@ -98,7 +177,14 @@ function saveRuntimeState(patch = {}) {
     ...patch,
   });
 
-  fs.writeFileSync(RUNTIME_STATE_FILE, JSON.stringify(nextState, null, 2));
+  _cachedState = nextState;
+
+  // Encrypt token fields before writing to disk
+  const stateToWrite = { ...nextState };
+  if (stateToWrite.accessToken) stateToWrite.accessToken = encryptField(stateToWrite.accessToken);
+  if (stateToWrite.refreshToken) stateToWrite.refreshToken = encryptField(stateToWrite.refreshToken);
+
+  _scheduleDiskWrite(stateToWrite);
   return nextState;
 }
 
@@ -126,12 +212,13 @@ function clearRuntimeSession() {
     serviceRuntime: current.serviceRuntime || null,
   };
 
-  fs.writeFileSync(RUNTIME_STATE_FILE, JSON.stringify(nextState, null, 2));
+  _cachedState = nextState;
+  _scheduleDiskWrite(nextState);
   return nextState;
 }
 
-function getPublicRuntimeState() {
-  const state = loadRuntimeState();
+function getPublicRuntimeState(options = {}) {
+  const state = loadRuntimeState(options);
   return {
     serverUrl: state.serverUrl || '',
     agentId: state.agentId,
@@ -155,6 +242,7 @@ module.exports = {
   RUNTIME_STATE_FILE,
   ensureRuntimeDir,
   ensureRuntimeState,
+  invalidateRuntimeStateCache,
   loadRuntimeState,
   saveRuntimeState,
   clearRuntimeSession,

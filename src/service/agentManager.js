@@ -1,4 +1,5 @@
 const EventEmitter = require('events');
+const fs = require('fs');
 const credentials = require('./credentials');
 const logger = require('./logger');
 const AuthManager = require('./auth');
@@ -8,15 +9,20 @@ const { buildStatusPayload } = require('./statusPayload');
 const {
     ensureRuntimeState,
     getPublicRuntimeState,
+    invalidateRuntimeStateCache,
     loadRuntimeState,
     saveRuntimeState,
+    RUNTIME_STATE_FILE,
 } = require('./runtimeState');
+
+const SERVICE_CHECK_INTERVAL_MS = 30_000;
 
 class AgentManager extends EventEmitter {
     constructor() {
         super();
         this.started = false;
         this.statusPoller = null;
+        this._fileWatcher = null;
         this.manualRuntime = new AgentRuntime({ mode: 'manual' });
         this.manualRuntime.on('status', () => {
             this.emit('status', this.getStatusSnapshotSync());
@@ -30,8 +36,31 @@ class AgentManager extends EventEmitter {
         await this._syncManualRuntimeWithService();
         this.statusPoller = setInterval(() => {
             void this._syncManualRuntimeWithService();
-        }, 5000);
+        }, SERVICE_CHECK_INTERVAL_MS);
+        this._startFileWatcher();
         this.emit('status', await this.getStatusSnapshot());
+    }
+
+    _startFileWatcher() {
+        if (this._fileWatcher) return;
+        try {
+            this._fileWatcher = fs.watch(RUNTIME_STATE_FILE, { persistent: false }, () => {
+                invalidateRuntimeStateCache();
+                void this._syncManualRuntimeWithService();
+            });
+            this._fileWatcher.on('error', () => {
+                this._stopFileWatcher();
+            });
+        } catch (_error) {
+            // File may not exist yet; polling will cover it
+        }
+    }
+
+    _stopFileWatcher() {
+        if (this._fileWatcher) {
+            this._fileWatcher.close();
+            this._fileWatcher = null;
+        }
     }
 
     async stop() {
@@ -39,6 +68,7 @@ class AgentManager extends EventEmitter {
             clearInterval(this.statusPoller);
             this.statusPoller = null;
         }
+        this._stopFileWatcher();
         await this.manualRuntime.stop();
         this.emit('status', await this.getStatusSnapshot());
     }
@@ -162,7 +192,7 @@ class AgentManager extends EventEmitter {
 
     async _syncManualRuntimeWithService() {
         const serviceStatus = await this._safeGetServiceStatus();
-        const runtimeState = loadRuntimeState();
+        const runtimeState = loadRuntimeState({ force: true });
         const publicRuntimeState = getPublicRuntimeState();
 
         if (serviceStatus.installed && serviceStatus.supported) {

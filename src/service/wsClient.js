@@ -21,7 +21,7 @@ class WSClient {
     this.socket = io(this.url, {
       auth: { token },
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 50,
       reconnectionDelayMax: this.backoff.max,
     });
 

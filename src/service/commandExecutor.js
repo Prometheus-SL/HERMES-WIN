@@ -47,9 +47,13 @@ class CommandExecutor {
     async execute(command) {
         const commandType = command?.command_type || command?.command || '';
 
-        if (!this.isAllowed(commandType)) {
+        if (typeof commandType !== 'string' || !this.isAllowed(commandType)) {
             return { success: false, error: 'Command not allowed' };
         }
+
+        const parameters = command?.parameters && typeof command.parameters === 'object'
+            ? command.parameters
+            : {};
 
         try {
             switch (commandType) {
@@ -64,20 +68,26 @@ class CommandExecutor {
                     return { success: true, data: { audio: await this.stepVolume('up') } };
                 case 'volume_down':
                     return { success: true, data: { audio: await this.stepVolume('down') } };
-                case 'volume_set':
+                case 'volume_set': {
+                    const level = Number(parameters.level);
+                    if (!Number.isFinite(level) || level < 0 || level > 100) {
+                        return { success: false, error: 'Volume level must be a number between 0 and 100' };
+                    }
                     return {
                         success: true,
-                        data: { audio: await this.handleVolume({ action: 'set', level: command.parameters?.level }) }
+                        data: { audio: await this.handleVolume({ action: 'set', level }) }
                     };
-                case 'audio_output_set':
+                }
+                case 'audio_output_set': {
+                    const deviceId = String(parameters.deviceId || parameters.id || '').trim();
+                    if (!deviceId) {
+                        return { success: false, error: 'deviceId is required for audio_output_set' };
+                    }
                     return {
                         success: true,
-                        data: {
-                            audio: await setDefaultOutputDevice(
-                                command.parameters?.deviceId || command.parameters?.id
-                            )
-                        }
+                        data: { audio: await setDefaultOutputDevice(deviceId) }
                     };
+                }
                 case 'get_audio_state':
                     return { success: true, data: { audio: await getAudioState() } };
                 case 'media_refresh':
@@ -90,15 +100,28 @@ class CommandExecutor {
                     return {
                         success: true,
                         data: {
-                            media: await this.queueMediaCommand(commandType, command.parameters || {})
+                            media: await this.queueMediaCommand(commandType, parameters)
                         }
                     };
-                case 'open_app':
-                    await systemCommands.openApp(command.parameters);
+                case 'open_app': {
+                    if (!parameters || typeof parameters !== 'object') {
+                        return { success: false, error: 'Parameters are required for open_app' };
+                    }
+                    const appName = String(parameters.name || parameters.app || '').trim();
+                    if (!appName || /[;&|`$]/.test(appName)) {
+                        return { success: false, error: 'Invalid or missing app name' };
+                    }
+                    await systemCommands.openApp(parameters);
                     return { success: true };
-                case 'sleep':
-                    await systemCommands.sleepSystem(command.parameters?.type || 'suspend');
+                }
+                case 'sleep': {
+                    const sleepType = String(parameters.type || 'suspend').trim();
+                    if (!['suspend', 'hibernate'].includes(sleepType)) {
+                        return { success: false, error: 'Invalid sleep type. Use "suspend" or "hibernate".' };
+                    }
+                    await systemCommands.sleepSystem(sleepType);
                     return { success: true };
+                }
                 case 'hibernate':
                     await systemCommands.sleepSystem('hibernate');
                     return { success: true };

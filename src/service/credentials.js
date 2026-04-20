@@ -25,7 +25,7 @@ async function ensureConfigDir() {
 }
 
 function canUseFileCredentialFallback() {
-    return process.env.NODE_ENV === 'development' || process.env.HERMES_ALLOW_FILE_CREDENTIALS === '1';
+    return process.env.NODE_ENV === 'development';
 }
 
 async function storeSecret(account, value) {
@@ -108,15 +108,54 @@ async function loadCredentials() {
     return { email, password, server_url: normalizeServerUrl(server_url) };
 }
 
+const crypto = require('crypto');
+
+function getTokenEncryptionKey() {
+    const machineId = require('os').hostname() + require('os').userInfo().username;
+    return crypto.createHash('sha256').update('hermes-win-tokens-' + machineId).digest();
+}
+
+function encryptTokenData(data) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
+    const plaintext = JSON.stringify(data);
+    const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+    return JSON.stringify({
+        iv: iv.toString('base64'),
+        tag: cipher.getAuthTag().toString('base64'),
+        data: ciphertext.toString('base64'),
+        v: 2,
+    });
+}
+
+function decryptTokenData(content) {
+    const parsed = JSON.parse(content);
+    if (!parsed.v || parsed.v < 2) {
+        // Legacy plaintext token file — read directly
+        return parsed;
+    }
+    const decipher = crypto.createDecipheriv(
+        'aes-256-gcm',
+        getTokenEncryptionKey(),
+        Buffer.from(parsed.iv, 'base64')
+    );
+    decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
+    const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(parsed.data, 'base64')),
+        decipher.final(),
+    ]);
+    return JSON.parse(plaintext.toString('utf8'));
+}
+
 async function storeTokens(tokens) {
     await ensureConfigDir();
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2));
+    fs.writeFileSync(TOKENS_FILE, encryptTokenData(tokens));
 }
 
 async function loadTokens() {
     if (!fs.existsSync(TOKENS_FILE)) throw new Error('No stored tokens');
     const content = fs.readFileSync(TOKENS_FILE, 'utf8');
-    return JSON.parse(content);
+    return decryptTokenData(content);
 }
 
 async function clearAll() {
