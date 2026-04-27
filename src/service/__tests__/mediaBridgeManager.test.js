@@ -58,7 +58,7 @@ describe('mediaBridgeManager', () => {
       mediaTelemetryEnabled: true,
     });
 
-    const manager = new MediaBridgeManager({ mode: 'service' });
+    const manager = new MediaBridgeManager({ mode: 'service', platform: 'win32' });
     const result = manager.queueCommand('media_toggle_playback');
 
     expect(result.queued).toBe(true);

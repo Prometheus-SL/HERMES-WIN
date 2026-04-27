@@ -14,6 +14,15 @@ describe('service channel identities', () => {
     jest.resetModules();
     process.env.HERMES_CHANNEL = 'local';
     delete process.env.HERMES_BASE_DIR;
+    if (modulePath === '../serviceWindows') {
+      jest.doMock(
+        'node-windows',
+        () => ({
+          Service: function MockService() {},
+        }),
+        { virtual: true }
+      );
+    }
     return require(modulePath);
   }
 
