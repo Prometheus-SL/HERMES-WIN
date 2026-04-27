@@ -3,15 +3,18 @@ const Service = require('node-windows').Service;
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const {
+  getBaseDirectory,
+  getHermesChannel,
+  getWindowsServiceName,
+  isLocalChannel,
+} = require('./platform/paths');
 
-const SERVICE_NAME = 'HermesNodeAgent';
+const SERVICE_NAME = getWindowsServiceName();
 const SERVICE_ID = SERVICE_NAME.replace(/[^\w]/g, '').toLowerCase();
 const SERVICE_INTERNAL_NAME = `${SERVICE_ID}.exe`;
 const LOCAL_SERVICE_SCRIPT = path.join(__dirname, 'agent.js');
-const PROGRAM_DATA_ROOT = path.join(
-  process.env.PROGRAMDATA || 'C:\\ProgramData',
-  'HERMES-WIN'
-);
+const PROGRAM_DATA_ROOT = getBaseDirectory('win32');
 
 function resolveServiceScript() {
   const resourcesPath = process.resourcesPath;
@@ -120,7 +123,9 @@ function createService(serviceBaseDirectory) {
 
   const svc = new Service({
     name: SERVICE_NAME,
-    description: 'HERMES Node Agent service',
+    description: isLocalChannel()
+      ? 'HERMES local Node Agent service'
+      : 'HERMES Node Agent service',
     script: resolveServiceScript(),
     execPath: process.execPath,
     workingDirectory: resolveServiceWorkingDirectory(),
@@ -128,6 +133,14 @@ function createService(serviceBaseDirectory) {
       {
         name: 'ELECTRON_RUN_AS_NODE',
         value: '1',
+      },
+      {
+        name: 'HERMES_CHANNEL',
+        value: getHermesChannel(),
+      },
+      {
+        name: 'HERMES_BASE_DIR',
+        value: getBaseDirectory('win32'),
       },
     ],
   });

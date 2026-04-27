@@ -1,9 +1,31 @@
 import os from "os";
 import path from "path";
 
-const WINDOWS_DIRECTORY_NAME = "HERMES-WIN";
-const UNIX_DIRECTORY_NAME = "hermes";
-const MAC_DIRECTORY_NAME = "Prometeo Hermes";
+const LOCAL_CHANNEL_ALIASES = new Set(["local", "dev", "development"]);
+
+function getHermesChannel() {
+  const rawChannel = String(process.env.HERMES_CHANNEL || process.env.HERMES_ENV || "")
+    .trim()
+    .toLowerCase();
+
+  return LOCAL_CHANNEL_ALIASES.has(rawChannel) ? "local" : "pro";
+}
+
+function isLocalChannel() {
+  return getHermesChannel() === "local";
+}
+
+function getWindowsDirectoryName() {
+  return isLocalChannel() ? "HERMES-WIN-LOCAL" : "HERMES-WIN";
+}
+
+function getUnixDirectoryName() {
+  return isLocalChannel() ? "hermes-local" : "hermes";
+}
+
+function getMacDirectoryName() {
+  return isLocalChannel() ? "Prometeo Hermes Local" : "Prometeo Hermes";
+}
 
 function getBaseDirectory(platform = process.platform) {
   if (process.env.HERMES_BASE_DIR) {
@@ -13,7 +35,7 @@ function getBaseDirectory(platform = process.platform) {
   if (platform === "win32") {
     return path.join(
       process.env.PROGRAMDATA || "C:\\ProgramData",
-      WINDOWS_DIRECTORY_NAME
+      getWindowsDirectoryName()
     );
   }
 
@@ -22,13 +44,13 @@ function getBaseDirectory(platform = process.platform) {
       os.homedir(),
       "Library",
       "Application Support",
-      MAC_DIRECTORY_NAME
+      getMacDirectoryName()
     );
   }
 
   const xdgStateHome =
     process.env.XDG_STATE_HOME || path.join(os.homedir(), ".local", "state");
-  return path.join(xdgStateHome, UNIX_DIRECTORY_NAME);
+  return path.join(xdgStateHome, getUnixDirectoryName());
 }
 
 function getLogsDirectory(platform = process.platform) {

@@ -1,10 +1,47 @@
 const os = require('os');
 const path = require('path');
 
-const WINDOWS_DIRECTORY_NAME = 'HERMES-WIN';
-const UNIX_DIRECTORY_NAME = 'hermes';
-const MAC_DIRECTORY_NAME = 'Prometeo Hermes';
-const SYSTEMD_SERVICE_NAME = 'hermes-agent.service';
+const PRO_CHANNEL = 'pro';
+const LOCAL_CHANNEL = 'local';
+const LOCAL_CHANNEL_ALIASES = new Set(['local', 'dev', 'development']);
+
+function getHermesChannel() {
+  const rawChannel = String(process.env.HERMES_CHANNEL || process.env.HERMES_ENV || '')
+    .trim()
+    .toLowerCase();
+
+  return LOCAL_CHANNEL_ALIASES.has(rawChannel) ? LOCAL_CHANNEL : PRO_CHANNEL;
+}
+
+function isLocalChannel(channel = getHermesChannel()) {
+  return channel === LOCAL_CHANNEL;
+}
+
+function getWindowsDirectoryName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'HERMES-WIN-LOCAL' : 'HERMES-WIN';
+}
+
+function getUnixDirectoryName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'hermes-local' : 'hermes';
+}
+
+function getMacDirectoryName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'Prometeo Hermes Local' : 'Prometeo Hermes';
+}
+
+function getSystemdServiceName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'hermes-agent-local.service' : 'hermes-agent.service';
+}
+
+function getWindowsServiceName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'HermesNodeAgentLocal' : 'HermesNodeAgent';
+}
+
+function getCredentialServiceName(channel = getHermesChannel()) {
+  return isLocalChannel(channel) ? 'HERMES-WIN-Agent-Local' : 'HERMES-WIN-Agent';
+}
+
+const SYSTEMD_SERVICE_NAME = getSystemdServiceName();
 
 function getBaseDirectory(platform = process.platform) {
   if (process.env.HERMES_BASE_DIR) {
@@ -12,7 +49,7 @@ function getBaseDirectory(platform = process.platform) {
   }
 
   if (platform === 'win32') {
-    return path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', WINDOWS_DIRECTORY_NAME);
+    return path.join(process.env.PROGRAMDATA || 'C:\\ProgramData', getWindowsDirectoryName());
   }
 
   if (platform === 'darwin') {
@@ -20,13 +57,13 @@ function getBaseDirectory(platform = process.platform) {
       os.homedir(),
       'Library',
       'Application Support',
-      MAC_DIRECTORY_NAME
+      getMacDirectoryName()
     );
   }
 
   const xdgStateHome =
     process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
-  return path.join(xdgStateHome, UNIX_DIRECTORY_NAME);
+  return path.join(xdgStateHome, getUnixDirectoryName());
 }
 
 function getRuntimeStateDirectory(platform = process.platform) {
@@ -75,16 +112,23 @@ function getPlatformDisplayName(platform = process.platform) {
 }
 
 module.exports = {
+  LOCAL_CHANNEL,
+  PRO_CHANNEL,
   SYSTEMD_SERVICE_NAME,
+  getCredentialServiceName,
   getBaseDirectory,
+  getHermesChannel,
   getCredentialsDirectory,
   getLogFilePath,
   getLogsDirectory,
   getPlatformDisplayName,
   getRuntimeStateDirectory,
   getRuntimeStateFilePath,
+  getSystemdServiceName,
   getSystemdServiceFilePath,
   getSystemdUserDirectory,
   getTokensFilePath,
   getUserConfigFilePath,
+  getWindowsServiceName,
+  isLocalChannel,
 };

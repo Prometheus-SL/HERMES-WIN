@@ -1,4 +1,9 @@
-const { getPlatformDisplayName } = require('./platform/paths');
+const {
+  getHermesChannel,
+  getPlatformDisplayName,
+  getWindowsServiceName,
+  isLocalChannel,
+} = require('./platform/paths');
 
 function selectServiceImplementation(platform = process.platform) {
   if (platform === 'win32') {
@@ -26,19 +31,19 @@ function getServiceKind(platform = process.platform) {
 
 function getServiceName(platform = process.platform) {
   if (platform === 'win32') {
-    return 'HermesNodeAgent';
+    return getWindowsServiceName();
   }
 
-  return 'Hermes Background Agent';
+  return isLocalChannel() ? 'Hermes Local Background Agent' : 'Hermes Background Agent';
 }
 
 function getServiceDisplayName(platform = process.platform) {
   if (platform === 'win32') {
-    return 'Windows service';
+    return isLocalChannel() ? 'Windows local service' : 'Windows service';
   }
 
   if (platform === 'linux') {
-    return 'Linux user service';
+    return isLocalChannel() ? 'Linux local user service' : 'Linux user service';
   }
 
   return `${getPlatformDisplayName(platform)} manual runtime`;
@@ -72,6 +77,7 @@ function normalizeServiceStatus(status = {}, platform = process.platform) {
     internalName: String(status.internalName || ''),
     displayName: String(status.displayName || getServiceDisplayName(platform)),
     kind: String(status.kind || getServiceKind(platform)),
+    channel: String(status.channel || getHermesChannel()),
     supported,
     installed: Boolean(status.installed),
     running: Boolean(status.running),

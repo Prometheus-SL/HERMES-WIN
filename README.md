@@ -66,16 +66,53 @@ Rust no forma parte del camino feliz del proyecto. Solo hace falta si quieres co
 ### Scripts mas utiles
 
 ```powershell
+npm run dev
 npm run start
 npm run start:dev
+npm run start:local
 npm run start:agent
+npm run start:agent:local
 npm run typecheck
 npm test -- --ci
 npm run build
 npm run build:bundle
+npm run service:status:local
+npm run service:install:local
+npm run service:start:local
+npm run service:stop:local
+npm run service:uninstall:local
 npm run service:install
 npm run service:uninstall
 ```
+
+### Canales local y pro
+
+HERMES separa dos canales operativos:
+
+- `pro`: canal por defecto. Usa el servicio estable `HermesNodeAgent` en Windows, `hermes-agent.service` en Linux y las rutas de datos normales.
+- `local`: canal de desarrollo. Se activa con `HERMES_CHANNEL=local` o con los scripts `npm run dev`, `npm run start:local` y `npm run service:*:local`.
+
+El canal local no toca el servicio estable. Usa:
+
+- Windows: servicio `HermesNodeAgentLocal` y datos en `%ProgramData%\HERMES-WIN-LOCAL`
+- Linux: servicio `hermes-agent-local.service` y datos en `~/.local/state/hermes-local`
+- macOS: datos en `~/Library/Application Support/Prometeo Hermes Local`
+
+Para trabajar en local:
+
+```powershell
+npm ci
+npm run dev
+```
+
+Si quieres probar el servicio local real en lugar del runtime manual:
+
+```powershell
+npm run service:install:local
+npm run dev
+```
+
+Los comandos sin sufijo `:local` siguen apuntando a `pro`.
 
 ### Flujo recomendado
 

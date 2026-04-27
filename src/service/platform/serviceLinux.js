@@ -5,12 +5,16 @@ const { commandExists, execFileText } = require('./commandUtils');
 const {
   SYSTEMD_SERVICE_NAME,
   getBaseDirectory,
+  getHermesChannel,
   getPlatformDisplayName,
   getSystemdServiceFilePath,
   getSystemdUserDirectory,
+  isLocalChannel,
 } = require('./paths');
 
-const SERVICE_NAME = 'Hermes Background Agent';
+const SERVICE_NAME = isLocalChannel()
+  ? 'Hermes Local Background Agent'
+  : 'Hermes Background Agent';
 
 function ensureSystemdAvailable() {
   if (!commandExists('systemctl')) {
@@ -82,13 +86,16 @@ function buildUnitFile() {
 
   return [
     '[Unit]',
-    'Description=Prometeo Hermes background agent',
+    isLocalChannel()
+      ? 'Description=Prometeo Hermes local background agent'
+      : 'Description=Prometeo Hermes background agent',
     'After=default.target network-online.target',
     '',
     '[Service]',
     'Type=simple',
     `WorkingDirectory=${quote(workingDirectory)}`,
     'Environment=ELECTRON_RUN_AS_NODE=1',
+    `Environment="HERMES_CHANNEL=${getHermesChannel()}"`,
     `ExecStart=${quote(execPath)} ${quote(serviceScript)}`,
     'Restart=always',
     'RestartSec=5',

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { normalizeServerUrl } = require('./serverUrl');
 const {
+    getCredentialServiceName,
     getTokensFilePath,
     getUserConfigFilePath,
 } = require('./platform/paths');
@@ -12,7 +13,7 @@ try {
     keytar = null;
 }
 
-const SERVICE = 'HERMES-WIN-Agent';
+const SERVICE = getCredentialServiceName();
 const CONFIG_FILE = getUserConfigFilePath();
 const TOKENS_FILE = getTokensFilePath();
 const CONFIG_DIR = require('path').dirname(CONFIG_FILE);
