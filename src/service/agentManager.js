@@ -87,6 +87,19 @@ class AgentManager extends EventEmitter {
         return this.getStatusSnapshot();
     }
 
+    async loginWithOAuthTokens({ serverUrl, accessToken, refreshToken }) {
+        const auth = new AuthManager();
+        await auth.loginWithOAuthTokens({
+            serverUrl,
+            accessToken,
+            refreshToken,
+        });
+
+        await this._syncManualRuntimeWithService();
+        this.emit('status', await this.getStatusSnapshot());
+        return this.getStatusSnapshot();
+    }
+
     async clearCredentials() {
         const auth = new AuthManager();
         await auth.clearCredentials();

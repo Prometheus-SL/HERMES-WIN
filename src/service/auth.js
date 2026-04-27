@@ -62,6 +62,36 @@ class AuthManager {
         return this.tokens;
     }
 
+    async loginWithOAuthTokens({ serverUrl, accessToken, refreshToken }) {
+        const currentState = loadRuntimeState();
+        const nextServerUrl = normalizeServerUrl(
+            serverUrl || this.serverUrl || currentState.serverUrl || ''
+        );
+        const nextAgentId = this.agentId || currentState.agentId;
+
+        if (!nextServerUrl) {
+            throw new Error('Missing server URL');
+        }
+
+        if (!accessToken || !refreshToken) {
+            throw new Error('Missing OAuth tokens');
+        }
+
+        await this._storeTokensFromResponse(
+            {
+                accessToken,
+                refreshToken,
+            },
+            {
+                serverUrl: nextServerUrl,
+                agentId: nextAgentId,
+            }
+        );
+        this.serverUrl = nextServerUrl;
+        this.agentId = nextAgentId;
+        return this.tokens;
+    }
+
     async _storeTokensFromResponse(tokens, options = {}) {
         const access = tokens.accessToken || tokens.access_token;
         const refresh = tokens.refreshToken || tokens.refresh_token;

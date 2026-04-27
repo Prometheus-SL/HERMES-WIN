@@ -11,7 +11,7 @@ El `.zip` de la release sirve para soporte tecnico, validaciones internas o desp
 1. Ejecuta `HERMES-windows-Setup-<version>.exe`.
 2. Acepta la instalacion y, si Windows lo solicita, concede permisos de administrador.
 3. Abre `Prometeo Hermes`.
-4. Inicia sesion con las credenciales y la URL del servidor que te haya facilitado soporte.
+4. Introduce la URL del servidor, pulsa el login por navegador y completa OAuth en tu navegador predeterminado.
 5. Comprueba que el agente aparece como conectado.
 
 ## Como dejarlo funcionando en segundo plano
@@ -30,6 +30,7 @@ El `.zip` de la release sirve para soporte tecnico, validaciones internas o desp
 
 - Si la instalacion del servicio pide elevacion, acepta el aviso de Windows.
 - Si el agente no conecta, revisa la URL del servidor y repite el login.
+- Si el login OAuth no vuelve a Hermes, pide a soporte que anada `http://127.0.0.1:46389` a `CORS_ORIGINS` en backend.
 - Si el panel muestra errores persistentes, abre los logs de HERMES y comparte las ultimas lineas con soporte.
 
 ## Informacion util para soporte

@@ -289,7 +289,7 @@ function getRecommendation(
       tone: "warning" as BadgeTone,
       title: "Complete machine login",
       description:
-        "Store the server URL and credentials once so the desktop app and the background runtime can share the same session.",
+        "Store the server URL and complete browser login once so the desktop app and the background runtime can share the same session.",
     };
   }
 

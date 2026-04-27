@@ -858,6 +858,16 @@ select {
     grid-column: 1 / -1;
 }
 
+.login-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+}
+
+.login-provider-button {
+    width: 100%;
+}
+
 .login-field label {
     color: rgba(255, 235, 206, 0.82);
     font-size: 0.84rem;
@@ -897,6 +907,12 @@ select {
     background: var(--warn-soft);
     border-color: rgba(251, 191, 36, 0.22);
     color: var(--warn);
+}
+
+.status-banner--info {
+    background: rgba(113, 218, 247, 0.11);
+    border-color: rgba(113, 218, 247, 0.25);
+    color: #d8f6ff;
 }
 
 .logs-card .ui-card__content {
@@ -997,7 +1013,8 @@ select {
     }
 
     .control-grid,
-    .login-form {
+    .login-form,
+    .login-provider-grid {
         grid-template-columns: 1fr;
     }
 

@@ -19,7 +19,7 @@ El estado compartido se persiste por plataforma:
 
 | Area | Como funciona |
 | --- | --- |
-| Login | La app autentica contra `/auth/agent/login` y guarda la sesion compartida. |
+| Login | La app abre el navegador para OAuth, recibe el callback local y guarda la sesion compartida. |
 | Runtime | El agente se conecta por Socket.IO y envia snapshots `system_status`. |
 | Servicio | La UI expone el agente real de cada plataforma y sus acciones disponibles. |
 | Logs | La app muestra el contenido del log local en tiempo real desde la ruta de runtime de cada sistema. |
@@ -37,10 +37,16 @@ El estado compartido se persiste por plataforma:
 
 ## Arquitectura operativa
 
-1. El usuario inicia sesion desde la app Electron con email, password y URL del servidor.
+1. El usuario lanza el login OAuth desde la app Electron y completa la autenticacion en el navegador.
 2. HERMES guarda `agentId`, `serverUrl`, tokens y estado del runtime en la ruta nativa del sistema.
 3. El runtime manual o el agente en segundo plano reutilizan esa sesion y publican telemetria normalizada.
 4. La UI actua como panel de control para el agente, el estado de conexion y los logs locales.
+
+## OAuth desktop callback
+
+Hermes completa el login OAuth con un callback local en `http://127.0.0.1:46389/oauth/callback` (o el puerto definido en `HERMES_OAUTH_CALLBACK_PORT`).
+
+Para que el backend acepte ese retorno, incluye ese origen en `CORS_ORIGINS` junto al frontend web.
 
 ## Telemetria que envia
 

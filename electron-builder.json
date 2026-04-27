@@ -31,6 +31,7 @@
   ],
   "win": {
     "artifactName": "HERMES-windows-${version}-${arch}.${ext}",
+    "icon": "build/icon.ico",
     "signAndEditExecutable": false,
     "target": [
       {
@@ -49,6 +50,9 @@
   },
   "nsis": {
     "artifactName": "HERMES-windows-Setup-${version}.${ext}",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico",
     "oneClick": false,
     "perMachine": false,
     "allowToChangeInstallationDirectory": true,

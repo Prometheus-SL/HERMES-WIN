@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { KeyRound, ShieldCheck, Waypoints } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { Bot, KeyRound, ShieldCheck, Waypoints } from "lucide-react";
 
 import BrandMark from "./BrandMark";
 import { Badge } from "./ui/badge";
@@ -11,27 +11,46 @@ type Props = {
   onLoginSuccess?: () => void;
 };
 
+type BrowserProvider = "google" | "github" | "discord";
+
+const PROVIDERS: Array<{
+  id: BrowserProvider;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  { id: "google", label: "Google", icon: ShieldCheck },
+  { id: "github", label: "GitHub", icon: Bot },
+  { id: "discord", label: "Discord", icon: Waypoints },
+];
+
 const Login: React.FC<Props> = ({ onLoginSuccess }) => {
   const [server, setServer] = useState(process.env.AUTH_SERVER_URL || "");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [provider, setProvider] = useState<BrowserProvider>("google");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+
+  const selectedProviderLabel = useMemo(
+    () => PROVIDERS.find((item) => item.id === provider)?.label || "provider",
+    [provider]
+  );
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    setHint(null);
     setLoading(true);
 
     try {
       const api = (window as any).api;
-      if (!api?.runtimeLogin) {
+      if (!api?.runtimeLoginBrowser) {
         throw new Error("Runtime API not available");
       }
 
-      const result = await api.runtimeLogin({
-        email,
-        password,
+      setHint(`Opening ${selectedProviderLabel} sign-in in your browser...`);
+
+      const result = await api.runtimeLoginBrowser({
+        provider,
         server_url: server,
       });
 
@@ -39,8 +58,10 @@ const Login: React.FC<Props> = ({ onLoginSuccess }) => {
         throw new Error(result?.error || "Login failed");
       }
 
+      setHint(null);
       onLoginSuccess?.();
     } catch (err: any) {
+      setHint(null);
       setError(err?.message || String(err));
     } finally {
       setLoading(false);
@@ -55,30 +76,30 @@ const Login: React.FC<Props> = ({ onLoginSuccess }) => {
             <BrandMark className="brand-mark--large" />
             <div>
               <span className="brand-inline__eyebrow">Prometeo Hermes</span>
-              <strong>Desktop session handoff</strong>
+              <strong>Desktop browser handoff</strong>
             </div>
           </div>
 
           <div className="login-card__copy">
             <Badge variant="secondary">
               <KeyRound className="size-4" />
-              First time setup
+              Browser login
             </Badge>
-            <h2>Authenticate this machine once and keep the session reusable.</h2>
+            <h2>Authenticate in your browser and return the session to Hermes.</h2>
             <p>
-              The runtime stores the session in a shared state file so the desktop
-              app and the background agent can both work from the same credentials.
+              Hermes opens the OAuth flow in your default browser and finishes the
+              desktop session handoff automatically when the login callback arrives.
             </p>
           </div>
 
           <div className="login-card__notes">
             <div className="login-card__note">
               <ShieldCheck className="size-4" />
-              <span>Access tokens are reused by the shared runtime.</span>
+              <span>Tokens are stored in the shared runtime state on this machine.</span>
             </div>
             <div className="login-card__note">
               <Waypoints className="size-4" />
-              <span>Set the server URL here and the whole machine follows it.</span>
+              <span>The runtime and the desktop UI reuse the same authenticated session.</span>
             </div>
           </div>
         </div>
@@ -94,39 +115,40 @@ const Login: React.FC<Props> = ({ onLoginSuccess }) => {
             />
           </div>
 
-          <div className="login-field">
-            <label htmlFor="email">Email</label>
-            <Input
-              id="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="email@domain"
-              autoComplete="username"
-            />
-          </div>
+          <div className="login-field login-field--full">
+            <label>Provider</label>
+            <div className="login-provider-grid">
+              {PROVIDERS.map((item) => {
+                const Icon = item.icon;
+                const isActive = provider === item.id;
 
-          <div className="login-field">
-            <label htmlFor="password">Password</label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="********"
-              autoComplete="current-password"
-            />
+                return (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    variant={isActive ? "default" : "outline"}
+                    className="login-provider-button"
+                    onClick={() => setProvider(item.id)}
+                  >
+                    <Icon className="size-4" />
+                    {item.label}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="login-form__actions">
             <p className="login-form__note">
-              Once saved, Hermes can refresh the shared runtime without asking for
-              credentials again every time the UI opens.
+              Hermes will wait for the browser callback and finish the machine login
+              in this app automatically.
             </p>
             <Button type="submit" disabled={loading}>
-              {loading ? "Authenticating..." : "Save credentials"}
+              {loading ? "Waiting for browser login..." : "Open browser and sign in"}
             </Button>
           </div>
 
+          {hint ? <div className="status-banner status-banner--info">{hint}</div> : null}
           {error ? <div className="status-banner status-banner--error">{error}</div> : null}
         </form>
       </CardContent>

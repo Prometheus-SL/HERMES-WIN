@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
     storeCredentials: (creds: { email: string; password: string; server_url: string }) => ipcRenderer.invoke('credentials-store', creds),
     hasCredentials: () => ipcRenderer.invoke('credentials-has'),
     runtimeLogin: (creds: { email: string; password: string; server_url: string }) => ipcRenderer.invoke('runtime-login', creds),
+    runtimeLoginBrowser: (payload: { server_url: string; provider?: "google" | "github" | "discord" }) =>
+        ipcRenderer.invoke('runtime-login-browser', payload),
     runtimeStatus: () => ipcRenderer.invoke('runtime-status'),
     runtimeClear: () => ipcRenderer.invoke('runtime-clear'),
     runtimeRestart: () => ipcRenderer.invoke('runtime-restart'),
