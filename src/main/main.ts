@@ -10,6 +10,7 @@ import { getLogFilePath } from "./runtimePaths";
 
 const fs = require("fs");
 const axios = require("axios");
+const { randomUUID } = require("crypto");
 const { normalizeServerUrl } = require("../service/serverUrl");
 
 const projectRoot = path.join(__dirname, "..", "..");
@@ -37,6 +38,7 @@ type OAuthFragmentPayload = {
   error?: string;
   accessToken?: string;
   refreshToken?: string;
+  clientState?: string;
 };
 
 const BROWSER_LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
@@ -127,6 +129,7 @@ function parseOAuthFragment(fragment: string): OAuthFragmentPayload {
     error: params.get("error") || undefined,
     accessToken: params.get("accessToken") || undefined,
     refreshToken: params.get("refreshToken") || undefined,
+    clientState: params.get("clientState") || undefined,
   };
 }
 
@@ -228,12 +231,14 @@ async function requestOAuthAuthorizeUrl(options: {
   provider: BrowserLoginProvider;
   serverUrl: string;
   returnOrigin: string;
+  clientState: string;
 }) {
   const endpoint = `${options.serverUrl}/auth/oauth/${options.provider}/authorize`;
   const response = await axios.post(
     endpoint,
     {
       returnOrigin: options.returnOrigin,
+      clientState: options.clientState,
     },
     {
       timeout: 30000,
@@ -266,6 +271,10 @@ async function runBrowserLoginFlow(request: BrowserLoginRequest = {}) {
     throw new Error("Missing server URL.");
   }
 
+  // Nonce de un solo uso para este intento: el backend lo devuelve en el callback y
+  // aquí se exige que coincida, de modo que un callback ajeno/inyectado no se acepte.
+  const expectedClientState = randomUUID();
+  let listenerOrigin = "";
   let server: ReturnType<typeof createServer> | null = null;
   let timeoutHandle: NodeJS.Timeout | null = null;
   let settled = false;
@@ -327,8 +336,25 @@ async function runBrowserLoginFlow(request: BrowserLoginRequest = {}) {
 
     if (req.method === "POST" && requestUrl.pathname === "/oauth/complete") {
       try {
+        // Solo la página puente local (mismo origen) puede finalizar el login.
+        const origin = req.headers.origin;
+        if (typeof origin === "string" && origin && origin !== listenerOrigin) {
+          sendJson(res, 403, { ok: false, error: "Invalid origin." });
+          return;
+        }
+
         const body = await readJsonBody(req);
         const payload = parseOAuthFragment(String(body?.fragment || ""));
+
+        // El callback debe corresponder a ESTE intento (anti session-fixation):
+        // se ignora cualquier callback ajeno/inyectado sin abortar la espera.
+        if (payload.clientState !== expectedClientState) {
+          sendJson(res, 403, {
+            ok: false,
+            error: "OAuth callback could not be verified for this session.",
+          });
+          return;
+        }
 
         if (payload.status !== "success") {
           const error = payload.error || "OAuth login was cancelled or denied.";
@@ -373,6 +399,7 @@ async function runBrowserLoginFlow(request: BrowserLoginRequest = {}) {
   }
 
   const returnOrigin = `http://127.0.0.1:${address.port}`;
+  listenerOrigin = returnOrigin;
   timeoutHandle = setTimeout(() => {
     settleOnce(
       "reject",
@@ -385,6 +412,7 @@ async function runBrowserLoginFlow(request: BrowserLoginRequest = {}) {
       provider,
       serverUrl,
       returnOrigin,
+      clientState: expectedClientState,
     });
     const callbackOriginFromState = extractReturnOriginFromAuthorizeUrl(authorizeUrl);
 
